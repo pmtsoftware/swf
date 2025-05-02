@@ -2,7 +2,9 @@ module Main (main) where
 
 import Relude
 
-import Lib
+import qualified Web.Scotty as Scotty
 
 main :: IO ()
-main = someFunc
+main = Scotty.scotty 3000 $
+    Scotty.get "/" $ do
+        Scotty.text "Hello World!!!"

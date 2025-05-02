@@ -25,6 +25,7 @@ dependencies:
 
 default-extensions:
 - NoImplicitPrelude
+- OverloadedStrings
 
 ghc-options:
 - -Wall
@@ -50,6 +51,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - swf
+    - scotty
 
 tests:
   swf-test:
