@@ -52,6 +52,7 @@ executables:
     dependencies:
     - swf
     - scotty
+    - blaze-html
 
 tests:
   swf-test:
