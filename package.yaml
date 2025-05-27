@@ -22,6 +22,8 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 - relude
+- scotty
+- blaze-html
 
 default-extensions:
 - NoImplicitPrelude
@@ -51,8 +53,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - swf
-    - scotty
-    - blaze-html
 
 tests:
   swf-test:
@@ -64,3 +64,8 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - swf
+    - tasty
+    - tasty-hspec
+    - hspec
+    - wreq
+    - lens
