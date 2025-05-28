@@ -1,4 +1,7 @@
-module App (run) where
+module App
+    ( start
+    , startWithConfig
+    ) where
 
 import Relude
 
@@ -7,9 +10,11 @@ import Homepage
 
 import qualified Web.Scotty as Scotty
 
-run :: IO ()
-run = do
-    AppConfig{..} <- loadAppConfig
+start :: IO ()
+start = loadAppConfig >>= startWithConfig
+
+startWithConfig :: AppConfig -> IO ()
+startWithConfig AppConfig{..} = do
     Scotty.scotty appPort $
         Scotty.get "/" $ do
             Scotty.html renderHomepage

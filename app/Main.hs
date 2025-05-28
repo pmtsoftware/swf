@@ -5,4 +5,4 @@ import Relude
 import App
 
 main :: IO ()
-main = run
+main = start
