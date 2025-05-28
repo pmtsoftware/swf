@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       App
+      Config
       Homepage
       Lib
   other-modules:
@@ -37,10 +38,14 @@ library
   default-extensions:
       NoImplicitPrelude
       OverloadedStrings
+      TypeApplications
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       base >=4.7 && <5
     , blaze-html
+    , dotenv
+    , envy
     , relude
     , scotty
   default-language: Haskell2010
@@ -56,12 +61,14 @@ executable swf-exe
   default-extensions:
       NoImplicitPrelude
       OverloadedStrings
+      TypeApplications
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , blaze-html
+    , dotenv
+    , envy
     , relude
-    , scotty
     , swf
   default-language: Haskell2010
 
@@ -77,14 +84,16 @@ test-suite swf-test
   default-extensions:
       NoImplicitPrelude
       OverloadedStrings
+      TypeApplications
+      RecordWildCards
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , blaze-html
+    , dotenv
+    , envy
     , hspec
     , lens
     , relude
-    , scotty
     , swf
     , tasty
     , tasty-hspec

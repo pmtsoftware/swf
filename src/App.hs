@@ -2,11 +2,14 @@ module App (run) where
 
 import Relude
 
+import Config
 import Homepage
 
 import qualified Web.Scotty as Scotty
 
 run :: IO ()
-run = Scotty.scotty 3000 $
-    Scotty.get "/" $ do
-        Scotty.html renderHomepage
+run = do
+    AppConfig{..} <- loadAppConfig
+    Scotty.scotty appPort $
+        Scotty.get "/" $ do
+            Scotty.html renderHomepage

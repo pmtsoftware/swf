@@ -22,12 +22,14 @@ description:         Please see the README on GitHub at <https://github.com/gith
 dependencies:
 - base >= 4.7 && < 5
 - relude
-- scotty
-- blaze-html
+- dotenv
+- envy
 
 default-extensions:
 - NoImplicitPrelude
 - OverloadedStrings
+- TypeApplications
+- RecordWildCards
 
 ghc-options:
 - -Wall
@@ -42,6 +44,9 @@ ghc-options:
 
 library:
   source-dirs: src
+  dependencies:
+  - scotty
+  - blaze-html
 
 executables:
   swf-exe:

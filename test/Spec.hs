@@ -8,18 +8,22 @@ import qualified Network.Wreq as Wreq
 import Control.Lens
 
 import App
+import Config
+
 import Control.Concurrent (forkIO)
 
 main :: IO ()
 main = do
     _ <- forkIO run
-    specs <- concat <$> mapM testSpecs [spec_hello_world]
+    config <- loadAppConfig
+    specs <- concat <$> mapM testSpecs [spec_hello_world config]
     defaultMain $ testGroup "Tests" [testGroup "Specs" specs]
 
-spec_hello_world :: Spec
-spec_hello_world =
+spec_hello_world :: AppConfig -> Spec
+spec_hello_world AppConfig{..} = do
+    let rootUrl = "http://" <> appHost <> ":" <> show appPort <> "/"
     describe "Homepage" $ do
-        r <- runIO $ Wreq.get "http://127.0.0.1:3000/"
+        r <- runIO $ Wreq.get (toString rootUrl)
         it "simple GET returns 200" $ do
             r ^. Wreq.responseStatus . Wreq.statusCode `shouldBe` 200
         it "Content-Type is html" $
