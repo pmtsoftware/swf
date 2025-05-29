@@ -45,8 +45,11 @@ ghc-options:
 library:
   source-dirs: src
   dependencies:
+  - unliftio
   - scotty
   - blaze-html
+  - postgresql-simple
+  - resource-pool
 
 executables:
   swf-exe:

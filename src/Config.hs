@@ -8,13 +8,24 @@ import System.Envy
 import  Configuration.Dotenv
 
 data AppConfig = AppConfig
-    { appHost :: Text -- APP_HOST
-    , appPort :: Int -- APP_PORT
+    { appHost    :: Text   -- APP_HOST
+    , appPort    :: Int    -- APP_PORT
+    , pghost     :: Text   -- PGHOST
+    , pgport     :: Int    -- PGPORT
+    , pgdatabase :: Text   -- PGDATABASE
+    , pguser     :: Text   -- PGUSER
     }
     deriving (Generic, Show)
 
 instance DefConfig AppConfig where
-    defConfig = AppConfig "localhost" 3000
+    defConfig = AppConfig
+        { appHost = "localhost"
+        , appPort = 3000
+        , pghost = ""
+        , pgport = 5432
+        , pgdatabase = "swf"
+        , pguser = "swf"
+        }
 
 instance FromEnv AppConfig
 

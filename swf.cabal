@@ -46,8 +46,11 @@ library
     , blaze-html
     , dotenv
     , envy
+    , postgresql-simple
     , relude
+    , resource-pool
     , scotty
+    , unliftio
   default-language: Haskell2010
 
 executable swf-exe
