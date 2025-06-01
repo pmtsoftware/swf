@@ -46,6 +46,7 @@ library
     , blaze-html
     , dotenv
     , envy
+    , monad-logger
     , postgresql-simple
     , relude
     , resource-pool

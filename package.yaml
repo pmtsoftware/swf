@@ -50,6 +50,7 @@ library:
   - blaze-html
   - postgresql-simple
   - resource-pool
+  - monad-logger
 
 executables:
   swf-exe:

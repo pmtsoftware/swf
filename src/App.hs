@@ -17,17 +17,18 @@ import Database.PostgreSQL.Simple
 import Data.Pool
 import Web.Scotty.Trans (ScottyT)
 import UnliftIO (MonadUnliftIO)
+import Control.Monad.Logger (LoggingT, runStdoutLoggingT, logInfoN, MonadLogger)
 
 data AppEnv = AppEnv
-    { envs :: AppConfig
+    { cfg :: AppConfig
     , connPool :: Pool Connection
     }
 
-newtype App a = App { runApp :: ReaderT AppEnv IO a }
-    deriving (Applicative, Functor, Monad, MonadIO, MonadUnliftIO)
+newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
+    deriving (Applicative, Functor, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO, MonadLogger)
 
-evalApp :: AppEnv -> App a -> IO a
-evalApp env = usingReaderT env . runApp
+runIO :: AppEnv -> App a -> IO a
+runIO env = runStdoutLoggingT . usingReaderT env . runApp
 
 start :: IO ()
 start = loadAppConfig >>= startWithConfig
@@ -41,9 +42,10 @@ startWithConfig cfg@AppConfig{..} = do
                     10
     pool <- newPool $ setNumStripes (Just 1) poolCfg
     let env = AppEnv cfg pool
-    Scotty.scottyT appPort (evalApp env) application
+    Scotty.scottyT appPort (runIO env) application
 
 application :: ScottyT App ()
 application = do
         Scotty.get "/" $ do
+            lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
