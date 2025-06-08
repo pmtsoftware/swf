@@ -10,6 +10,7 @@ import Relude
 
 import Config
 import Homepage
+import Db
 
 import qualified Web.Scotty.Trans as Scotty
 
@@ -41,6 +42,7 @@ startWithConfig cfg@AppConfig{..} = do
                     60
                     10
     pool <- newPool $ setNumStripes (Just 1) poolCfg
+    _ <- withResource pool migrateDb
     let env = AppEnv cfg pool
     Scotty.scottyT appPort (runIO env) application
 

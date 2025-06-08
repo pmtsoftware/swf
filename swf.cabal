@@ -27,6 +27,7 @@ library
   exposed-modules:
       App
       Config
+      Db
       Homepage
       Lib
   other-modules:
@@ -47,6 +48,7 @@ library
     , dotenv
     , envy
     , monad-logger
+    , postgresql-migration
     , postgresql-simple
     , relude
     , resource-pool

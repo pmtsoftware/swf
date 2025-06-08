@@ -49,6 +49,7 @@ library:
   - scotty
   - blaze-html
   - postgresql-simple
+  - postgresql-migration
   - resource-pool
   - monad-logger
 
