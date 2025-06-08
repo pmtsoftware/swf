@@ -53,7 +53,7 @@ application = do
         Scotty.get "/" $ do
             lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
-
+        Scotty.get "/users" $ Scotty.html renderUsers
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
