@@ -1,4 +1,4 @@
-module Homepage (renderHomepage, renderUsers) where
+module Homepage (renderHomepage, renderUsers, layout) where
 
 import Relude hiding (head, id, div)
 
@@ -76,3 +76,4 @@ layout innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
         main $ do
             navbar
             div ! class_ "container py-4" $ innerHtml
+        script ! src "https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js" $ mempty

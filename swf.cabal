@@ -26,10 +26,12 @@ source-repository head
 library
   exposed-modules:
       App
+      Common
       Config
       Db
       Homepage
       Lib
+      Users
   other-modules:
       Paths_swf
   autogen-modules:
