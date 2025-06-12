@@ -63,6 +63,17 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - swf
+  swf-dev:
+    main:                Main.hs
+    source-dirs:         dev
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - process
+    - fsnotify
+    - filepath
 
 tests:
   swf-test:

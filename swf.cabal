@@ -56,6 +56,30 @@ library
     , unliftio
   default-language: Haskell2010
 
+executable swf-dev
+  main-is: Main.hs
+  other-modules:
+      Paths_swf
+  autogen-modules:
+      Paths_swf
+  hs-source-dirs:
+      dev
+  default-extensions:
+      NoImplicitPrelude
+      OverloadedStrings
+      TypeApplications
+      RecordWildCards
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , dotenv
+    , envy
+    , filepath
+    , fsnotify
+    , process
+    , relude
+  default-language: Haskell2010
+
 executable swf-exe
   main-is: Main.hs
   other-modules:
