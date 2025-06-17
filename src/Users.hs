@@ -19,10 +19,10 @@ listOfUsers :: ActionT App ()
 listOfUsers = Scotty.html . renderHtml $ markup
     where
         markup :: Html
-        markup = layout $ div ! class_ "p-5 mb-4 bg-body-tertiary rounded-3" $ do
+        markup = layout $ do
             h1 "Users"
             a ! href "/add-user" $ "Add new user"
-            table ! class_ "table table-striped table-borderless mt-2" $ do
+            table $ do
                 caption "Total users: 4"
                 thead $ tr $ do
                     th ! scope "col" $ "#"
@@ -54,18 +54,11 @@ listOfUsers = Scotty.html . renderHtml $ markup
 addUser :: ActionT App ()
 addUser = Scotty.html . renderHtml $ markup
     where
-        markup = layout $ div ! class_ "p-5 mb-4 bg-body-tertiary rounded-3" $ do
-            form $ do
-                div ! class_ "row mb-3" $ do
-                    label ! class_ "col-sm-2 col-form-label" ! for "email" $ "Email"
-                    div ! class_ "col-sm-10" $ do
-                        input ! type_ "email" ! class_ "form-control" ! id "email" ! required "required"
-                div ! class_ "row mb-3" $ do
-                    label ! class_ "col-sm-2 col-form-label" ! for "password" $ "Password"
-                    div ! class_ "col-sm-10" $ do
-                        input ! type_ "password" ! class_ "form-control" ! id "password" ! required "required"
-                div ! class_ "row mb-3" $ do
-                    label ! class_ "col-sm-2 col-form-label" ! for "confirm-password" $ "Confirm password"
-                    div ! class_ "col-sm-10" $ do
-                        input ! type_ "password" ! class_ "form-control" ! id "confirm-password" ! required "required"
-                button ! class_ "btn btn-primary" ! type_ "submit" $ "Save"
+        markup = layout $ form $ do
+            label ! for "email" $ "Email"
+            input ! required "required"
+            label ! for "password" $ "Password"
+            input ! required "required"
+            label ! for "confirm-password" $ "Confirm password"
+            input ! required "required"
+            button ! type_ "submit" $ "Save"

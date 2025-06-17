@@ -13,19 +13,10 @@ renderUsers :: LText
 renderUsers = renderHtml users
 
 homepage :: Html
-homepage = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
-    head $ do
-        title "Hello world!!!"
-        link ! href "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" ! rel "stylesheet"
-    body $ do
-        main $ do
-            navbar
-            div ! class_ "container py-4" $ do
-                div ! class_ "p-5 mb-4 bg-body-tertiary rounded-3" $ do
-                    div ! class_ "container-fluid py-5" $ do
-                        h1 ! class_ "display-5 fw-bold" $ "Hello world app"
-                        p ! class_ "col-md-8 fs-4" $ "Welcome in our new web app"
-                        button ! class_ "btn btn-primary btn-lg" $ "Example button"
+homepage = layout $ do
+    h1 "Hello world app"
+    p "Welcome in our new web app"
+    button "Example button"
 
 navbar :: Html
 navbar = nav ! class_ "navbar navbar-expand-lg bg-body-tertiary" $ do
@@ -70,10 +61,11 @@ users = layout $ div ! class_ "p-5 mb-4 bg-body-tertiary rounded-3" $ do
 layout :: Html -> Html
 layout innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
     head $ do
+        meta ! name "viewport" ! content "width=device-width, initial-scale=1.0"
         title "Hello world!!!"
-        link ! href "https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" ! rel "stylesheet"
+        link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
+        -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
     body $ do
         main $ do
-            navbar
-            div ! class_ "container py-4" $ innerHtml
-        script ! src "https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js" $ mempty
+            -- navbar
+            innerHtml
