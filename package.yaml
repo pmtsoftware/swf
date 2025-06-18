@@ -52,6 +52,7 @@ library:
   - postgresql-migration
   - resource-pool
   - monad-logger
+  - wai-app-static
 
 executables:
   swf-exe:

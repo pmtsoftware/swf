@@ -19,6 +19,7 @@ import Data.Pool
 import Web.Scotty.Trans (ScottyT)
 import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, runStdoutLoggingT, logInfoN, MonadLogger)
+import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
@@ -48,6 +49,11 @@ startWithConfig cfg@AppConfig{..} = do
 
 application :: ScottyT App ()
 application = do
+        Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
             lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
+
+    where
+        staticRoute = Scotty.regex "^/static/(.*)"
+        sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
