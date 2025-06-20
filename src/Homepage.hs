@@ -65,6 +65,7 @@ layout innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
         title "Hello world!!!"
         link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
         -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
+        link ! href "/static/swf.css" ! rel "stylesheet"
     body $ do
         main $ do
             -- navbar

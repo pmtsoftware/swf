@@ -1,3 +1,9 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Users ( users ) where
 
 import Common
@@ -9,11 +15,31 @@ import Web.Scotty.Trans (ScottyT, ActionT)
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
+import TextShow
+import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
+
+newtype UserId = UserId { unUserId :: Int64 }
+    deriving (Show, Eq, Generic)
+deriving newtype instance FromField UserId
+deriving newtype instance ToField UserId
+deriving newtype instance TextShow UserId
+
+newtype Email = Email { unEmail :: Text }
+    deriving (Show, Eq, Generic)
+deriving newtype instance FromField Email
+deriving newtype instance ToField Email
+
+deriving instance Generic (PasswordHash a)
+deriving newtype instance FromField (PasswordHash a)
+deriving newtype instance ToField (PasswordHash a)
 
 users :: ScottyT App ()
 users = do
     Scotty.get "/users" listOfUsers
-    Scotty.get "/add-user" addUser
+    Scotty.get "/add-user" addUserForm
+    Scotty.post "/add-user" addUser
+    Scotty.get "/user/:id" $ do
+        Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
 
 listOfUsers :: ActionT App ()
 listOfUsers = Scotty.html . renderHtml $ markup
@@ -51,14 +77,35 @@ listOfUsers = Scotty.html . renderHtml $ markup
                         td "Otto"
                         td "MarkOtto@gmail.com"
 
-addUser :: ActionT App ()
-addUser = Scotty.html . renderHtml $ markup
+addUserForm :: ActionT App ()
+addUserForm = Scotty.html . renderHtml $ markup
     where
-        markup = layout $ form $ do
-            label ! for "email" $ "Email"
-            input ! required "required"
-            label ! for "password" $ "Password"
-            input ! required "required"
-            label ! for "confirm-password" $ "Confirm password"
-            input ! required "required"
-            button ! type_ "submit" $ "Save"
+        markup = layout $ do
+            h1 "Add user"
+            form ! method "POST" $ do
+                label $ do
+                    "Email"
+                    input ! required "required" ! name "email" ! type_ "email"
+                label $ do
+                    "Password"
+                    input ! required "required" ! name "password1" ! type_ "password"
+                label $ do
+                    "Confirm password"
+                    input ! required "required" ! name "password2" ! type_ "password"
+                button ! type_ "submit" $ "Save"
+
+addUser :: ActionT App ()
+addUser = do
+    email <- Email <$> Scotty.formParam @Text "email"
+    pass1 <- mkPassword <$> Scotty.formParam @Text "password1"
+    pass2 <- mkPassword <$> Scotty.formParam @Text "password2"
+    pwHash <- hashPassword pass1
+    AppEnv{..} <- lift ask
+    userId <- liftIO $ withResource connPool $ \conn -> do
+        [Only uid] <- query conn stmt (email, pwHash)
+        return (uid :: UserId)
+    Scotty.redirect $ "/user/" <> showtl userId
+    where
+        stmt = [sql|
+            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
+        |]

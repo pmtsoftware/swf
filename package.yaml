@@ -30,6 +30,8 @@ default-extensions:
 - OverloadedStrings
 - TypeApplications
 - RecordWildCards
+- QuasiQuotes
+- DeriveGeneric
 
 ghc-options:
 - -Wall
@@ -53,6 +55,8 @@ library:
   - resource-pool
   - monad-logger
   - wai-app-static
+  - password
+  - text-show
 
 executables:
   swf-exe:
