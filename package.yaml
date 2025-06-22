@@ -57,6 +57,7 @@ library:
   - wai-app-static
   - password
   - text-show
+  - time
 
 executables:
   swf-exe:

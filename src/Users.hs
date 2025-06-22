@@ -17,6 +17,9 @@ import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import TextShow
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
+import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
+import Database.PostgreSQL.Simple.FromRow (fromRow, field)
+import Relude.Extra.Newtype (un)
 
 newtype UserId = UserId { unUserId :: Int64 }
     deriving (Show, Eq, Generic)
@@ -33,6 +36,16 @@ deriving instance Generic (PasswordHash a)
 deriving newtype instance FromField (PasswordHash a)
 deriving newtype instance ToField (PasswordHash a)
 
+data User = User
+    { userId :: UserId
+    , email :: !Email
+    , lockedAt :: Maybe ZonedTimestamp
+    , failedLoginAttempts :: !Int
+    }
+    deriving (Show, Generic)
+instance FromRow User where
+    fromRow = User <$> field <*> field <*> field <*> field
+
 users :: ScottyT App ()
 users = do
     Scotty.get "/users" listOfUsers
@@ -42,40 +55,30 @@ users = do
         Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
 
 listOfUsers :: ActionT App ()
-listOfUsers = Scotty.html . renderHtml $ markup
+listOfUsers = do
+    pool <- lift $ asks connPool
+    allUsers <- liftIO $ withResource pool $ \conn -> do
+        query_ @User conn stmt
+    Scotty.html . renderHtml $ markup allUsers
     where
-        markup :: Html
-        markup = layout $ do
+        toRow :: User -> Html
+        toRow User{..} = tr $ do
+            th ! scope "col" $ text (showt userId)
+            td $ text (un email)
+        markup :: [User] -> Html
+        markup us = layout $ do
             h1 "Users"
             a ! href "/add-user" $ "Add new user"
             table $ do
                 caption "Total users: 4"
                 thead $ tr $ do
                     th ! scope "col" $ "#"
-                    th ! scope "col" $ "First name"
-                    th ! scope "col" $ "Last name"
                     th ! scope "col" $ "Email"
                 tbody $ do
-                    tr $ do
-                        th ! scope "col" $ "1"
-                        td "Mark"
-                        td "Otto"
-                        td "MarkOtto@gmail.com"
-                    tr $ do
-                        th ! scope "col" $ "2"
-                        td "Mark"
-                        td "Otto"
-                        td "MarkOtto@gmail.com"
-                    tr $ do
-                        th ! scope "col" $ "3"
-                        td "Mark"
-                        td "Otto"
-                        td "MarkOtto@gmail.com"
-                    tr $ do
-                        th ! scope "col" $ "4"
-                        td "Mark"
-                        td "Otto"
-                        td "MarkOtto@gmail.com"
+                    forM_ us toRow
+        stmt = [sql|
+            SELECT id, email, locked_at, failed_login_attempts FROM users;
+        |]
 
 addUserForm :: ActionT App ()
 addUserForm = Scotty.html . renderHtml $ markup
