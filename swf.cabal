@@ -26,10 +26,12 @@ source-repository head
 library
   exposed-modules:
       App
+      Common
       Config
       Db
       Homepage
       Lib
+      Users
   other-modules:
       Paths_swf
   autogen-modules:
@@ -41,6 +43,8 @@ library
       OverloadedStrings
       TypeApplications
       RecordWildCards
+      QuasiQuotes
+      DeriveGeneric
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       base >=4.7 && <5
@@ -48,11 +52,14 @@ library
     , dotenv
     , envy
     , monad-logger
+    , password
     , postgresql-migration
     , postgresql-simple
     , relude
     , resource-pool
     , scotty
+    , text-show
+    , time
     , unliftio
     , wai-app-static
   default-language: Haskell2010
@@ -70,6 +77,8 @@ executable swf-dev
       OverloadedStrings
       TypeApplications
       RecordWildCards
+      QuasiQuotes
+      DeriveGeneric
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
@@ -94,6 +103,8 @@ executable swf-exe
       OverloadedStrings
       TypeApplications
       RecordWildCards
+      QuasiQuotes
+      DeriveGeneric
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
@@ -117,6 +128,8 @@ test-suite swf-test
       OverloadedStrings
       TypeApplications
       RecordWildCards
+      QuasiQuotes
+      DeriveGeneric
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5

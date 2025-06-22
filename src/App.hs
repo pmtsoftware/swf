@@ -1,33 +1,19 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 module App
     ( start
     , startWithConfig
     ) where
 
-import Relude
+import Common
 
-import Config
+import Users
 import Homepage
 import Db
 
 import qualified Web.Scotty.Trans as Scotty
 
-import Database.PostgreSQL.Simple
-import Data.Pool
 import Web.Scotty.Trans (ScottyT)
-import UnliftIO (MonadUnliftIO)
-import Control.Monad.Logger (LoggingT, runStdoutLoggingT, logInfoN, MonadLogger)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
-
-data AppEnv = AppEnv
-    { cfg :: AppConfig
-    , connPool :: Pool Connection
-    }
-
-newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
-    deriving (Applicative, Functor, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO, MonadLogger)
+import Control.Monad.Logger (runStdoutLoggingT, logInfoN)
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -53,7 +39,7 @@ application = do
         Scotty.get "/" $ do
             lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
-
+        users
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
