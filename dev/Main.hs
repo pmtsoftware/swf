@@ -11,6 +11,8 @@ import qualified Network.WebSockets as WS
 
 type ProcDescr = (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle)
 
+type ConnsRef = MVar [WS.Connection]
+
 main :: IO ()
 main = do
     pd <- createProcess $ shell "stack exec swf-exe"
@@ -20,14 +22,15 @@ main = do
         dirMaybe = (<> "/bin") <$> viaNonEmpty head outs
         dir = toString $ fromMaybe "." dirMaybe
     clients <- newMVar newClientsState
-    _ <- forkIO $ watchAppExe dir box
+    _ <- forkIO $ watchAppExe dir box clients
+    _ <- forkIO $ runDevServer clients
     forever $ threadDelay 1000000
 
 newClientsState :: [WS.Connection]
 newClientsState = []
 
-watchAppExe :: FilePath -> MVar ProcDescr -> IO ()
-watchAppExe dir box = withManager $ \mgr -> do
+watchAppExe :: FilePath -> MVar ProcDescr -> ConnsRef -> IO ()
+watchAppExe dir box connsBox = withManager $ \mgr -> do
     _ <- watchDir
         mgr
         dir
@@ -39,16 +42,20 @@ watchAppExe dir box = withManager $ \mgr -> do
             putStrLn "Starting swf-exe..."
             pd' <- createProcess $ shell "stack exec swf-exe"
             _ <- putMVar box pd'
-            return ()
+            conns <- readMVar connsBox
+            forM_ conns $ \conn -> WS.sendTextData @Text conn "reload"
 
-    -- forever $ threadDelay 1000000
-    return ()
+    forever $ threadDelay 1000000
 
 filterAppExe :: Event -> Bool
 filterAppExe (CloseWrite {..}) = takeFileName eventPath == "swf-exe"
 filterAppExe _ = False
 
-runDevServer :: IO ()
-runDevServer = do
-    WS.runServer "127.0.0.1" 3069 undefined
-    return ()
+runDevServer :: ConnsRef -> IO ()
+runDevServer connsBox = do
+    WS.runServer "127.0.0.1" 3069 $ \pConn -> do
+        conn <- WS.acceptRequest pConn
+        putStrLn "Connection accepted"
+        conns <- takeMVar connsBox
+        putMVar connsBox $ conn : conns
+        putStrLn "Connection stored"
