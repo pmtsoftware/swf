@@ -14,7 +14,7 @@ renderUsers = renderHtml users
 
 homepage :: Html
 homepage = layout $ do
-    h1 "Hello world app!"
+    h1 "Hello world app"
     p "Welcome in our new web app"
     button "Example button"
 

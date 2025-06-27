@@ -88,6 +88,8 @@ executable swf-dev
     , fsnotify
     , process
     , relude
+    , text-show
+    , time
     , websockets
   default-language: Haskell2010
 

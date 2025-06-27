@@ -1,11 +1,3 @@
-
-// alert("Hej jestem tu")
-
-// if (window.location) {
-//     window.location.reload()
-// }
-//
-
 try {
     const ws = new WebSocket("ws://127.0.0.1:3069")
     console.log("Connected to local dev server")
@@ -17,6 +9,11 @@ try {
     ws.onmessage = (e) => {
         console.log("Got message")
         console.log(e.data)
+        setTimeout(() => {
+            if (window.location) {
+                window.location.reload()
+            }
+        }, 500)
     }
 
     setInterval(() => {
