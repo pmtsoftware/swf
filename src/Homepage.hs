@@ -15,7 +15,7 @@ renderUsers = renderHtml users
 homepage :: Html
 homepage = layout $ do
     h1 "Hello world app"
-    p "Welcome in our new web app"
+    p "Welcome in our new web app when live reloading almost works!"
     button "Example button"
 
 navbar :: Html
@@ -66,6 +66,7 @@ layout innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
         link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
         -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
         link ! href "/static/swf.css" ! rel "stylesheet"
+        script ! type_ "module" ! src "/static/dev.js" $ mempty
     body $ do
         main $ do
             -- navbar

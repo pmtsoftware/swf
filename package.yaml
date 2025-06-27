@@ -80,6 +80,9 @@ executables:
     - process
     - fsnotify
     - filepath
+    - websockets
+    - time
+    - text-show
 
 tests:
   swf-test:
