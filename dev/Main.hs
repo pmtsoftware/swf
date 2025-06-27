@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Main (main) where
 
 import Relude
@@ -6,19 +7,20 @@ import System.FSNotify
 import Control.Concurrent (threadDelay, forkIO, writeChan, newChan, readChan)
 import System.Process.Internals (ProcessHandle)
 import System.Process (createProcess, shell, readCreateProcess, cleanupProcess)
-import System.FilePath (takeFileName)
+import System.FilePath (takeFileName, takeExtension)
 import qualified Network.WebSockets as WS
 import Control.Concurrent.Chan (Chan)
 import Control.Exception (finally)
 import Data.Time.Clock.System (SystemTime, getSystemTime)
-import TextShow (TextShow, showb, showt)
+import TextShow (TextShow, showb, showt, fromText)
 
 type ProcDescr = (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle)
 
-newtype DevEvent = AppBuild ()
+data DevEvent = AppBuild | FileChanged !Text
     deriving (Show, Eq)
 instance TextShow DevEvent where
-    showb (AppBuild _) = "build"
+    showb AppBuild = "build"
+    showb (FileChanged fn) = "file " <> fromText fn
 
 -- we will use timestamp as client id (should be ok for local connections)
 type Clients = MVar [(SystemTime, Chan DevEvent)]
@@ -33,6 +35,7 @@ main = do
         dir = toString $ fromMaybe "." dirMaybe
     clients <- newMVar newClientsState
     _ <- forkIO $ watchAppExe dir box clients
+    _ <- forkIO $ watchStatic "./static" clients
     _ <- forkIO $ runDevServer clients
     forever $ threadDelay 1000000
 
@@ -54,7 +57,7 @@ watchAppExe dir box connsBox = withManager $ \mgr -> do
             _ <- putMVar box pd'
             conns <- takeMVar connsBox
             forM_ conns $ \(_, clientEvents) -> do
-                writeChan clientEvents $ AppBuild ()
+                writeChan clientEvents AppBuild
             putMVar connsBox conns
 
     forever $ threadDelay 1000000
@@ -62,6 +65,26 @@ watchAppExe dir box connsBox = withManager $ \mgr -> do
 filterAppExe :: Event -> Bool
 filterAppExe (CloseWrite {..}) = takeFileName eventPath == "swf-exe"
 filterAppExe _ = False
+
+watchStatic :: FilePath -> Clients -> IO ()
+watchStatic dir connsBox = withManager $ \mgr -> do
+    _ <- watchDir
+        mgr
+        dir
+        filterStatic
+        $ \case
+            CloseWrite{..}-> do
+                conns <- takeMVar connsBox
+                forM_ conns $ \(_, clientEvents) -> do
+                    writeChan clientEvents $ FileChanged $ "/static/" <> toText (takeFileName eventPath)
+                putMVar connsBox conns
+            _ -> return ()
+
+    forever $ threadDelay 1000000
+
+filterStatic :: Event -> Bool
+filterStatic (CloseWrite{..}) = takeExtension eventPath == ".css"
+filterStatic _ = False
 
 runDevServer :: Clients -> IO ()
 runDevServer connsBox = do

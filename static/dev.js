@@ -9,11 +9,27 @@ try {
     ws.onmessage = (e) => {
         console.log("Got message")
         console.log(e.data)
-        setTimeout(() => {
-            if (window.location) {
-                window.location.reload()
-            }
-        }, 500)
+
+        switch (e.data) {
+            case "build":
+                setTimeout(() => {
+                    if (window.location) {
+                        window.location.reload()
+                    }
+                }, 500)
+                break
+            default:
+                const words = e.data.split(' ')
+                const el = document.querySelector(`link[href^='${words[1]}']`)
+                if (el) {
+                    console.log(el)
+                    const css = document.createElement('link')
+                    css.href = `${words[1]}?foo=${new Date().getTime()}`
+                    css.rel = "stylesheet"
+                    el.replaceWith(css)
+                }
+                break
+        }
     }
 
     setInterval(() => {
