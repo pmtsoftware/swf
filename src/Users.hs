@@ -17,9 +17,12 @@ import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import TextShow
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
+import Data.Password.Validate
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Relude.Extra.Newtype (un)
+import Validation
+import Relude.Unsafe (fromJust)
 
 newtype UserId = UserId { unUserId :: Int64 }
     deriving (Show, Eq, Generic)
@@ -31,6 +34,12 @@ newtype Email = Email { unEmail :: Text }
     deriving (Show, Eq, Generic)
 deriving newtype instance FromField Email
 deriving newtype instance ToField Email
+
+newtype PlainPassword = PlainPassword Text
+    deriving (Show, Eq)
+
+newtype PlainPassword2 = PlainPassword2 Text
+    deriving (Show, Eq)
 
 deriving instance Generic (PasswordHash a)
 deriving newtype instance FromField (PasswordHash a)
@@ -45,6 +54,35 @@ data User = User
     deriving (Show, Generic)
 instance FromRow User where
     fromRow = User <$> field <*> field <*> field <*> field
+
+data Form = Form
+    { formEmail :: Text
+    , formPassword :: Text
+    , formPassword2 :: Text
+    }
+
+data FormValidationError
+    = InvalidEmail !Text
+    | InvalidPass  !(NonEmpty Text)
+    | Paswword2Mismatch
+
+validatePass :: Text -> Validation (NonEmpty FormValidationError) Password
+validatePass input = mkPassword input <$ failureIf (isJust result) undefined
+    where
+        result = getErrs $ validatePassword defaultPasswordPolicy_ $ mkPassword input
+
+        getErrs :: ValidationResult -> Maybe (NonEmpty FormValidationError)
+        getErrs ValidPassword = Nothing
+        getErrs (InvalidPassword errs) = nonEmpty $ undefined
+
+        report :: InvalidReason -> Text
+        report (PasswordTooShort minLen x) = "Password is too short. Min length " <> showt minLen <> " characters."
+        report (PasswordTooLong maxLen x) = "Password too long. Maz length " <> showt maxLen <> " characters."
+        report (NotEnoughReqChars Uppercase minAmount x) = "At least " <> showt minAmount <> " of uppercase letters required."
+        report (NotEnoughReqChars Lowercase minAmount x) = "At least " <> showt minAmount <> " of lowercase letters required."
+        report (NotEnoughReqChars Special minAmount x) = "At least " <> showt minAmount <> " of special characters required."
+        report (NotEnoughReqChars Digit minAmount x) = "At least " <> showt minAmount <> " of digits required."
+        report (InvalidCharacters chars) = "Password contains chracters than cannot be used: " <> chars
 
 users :: ScottyT App ()
 users = do
@@ -91,7 +129,7 @@ addUserForm = Scotty.html . renderHtml $ markup
                     input ! required "required" ! name "email" ! type_ "email"
                 label $ do
                     "Password"
-                    input ! required "required" ! name "password1" ! type_ "password"
+                    input ! required "required" ! name "password" ! type_ "password"
                 label $ do
                     "Confirm password"
                     input ! required "required" ! name "password2" ! type_ "password"
@@ -99,10 +137,11 @@ addUserForm = Scotty.html . renderHtml $ markup
 
 addUser :: ActionT App ()
 addUser = do
+    Form{..} <- Form <$> Scotty.formParam "email" <*> Scotty.formParam "password" <*> Scotty.formParam "password2"
     email <- Email <$> Scotty.formParam @Text "email"
-    pass1 <- mkPassword <$> Scotty.formParam @Text "password1"
+    pass <- mkPassword <$> Scotty.formParam @Text "password"
     pass2 <- mkPassword <$> Scotty.formParam @Text "password2"
-    pwHash <- hashPassword pass1
+    pwHash <- hashPassword pass
     AppEnv{..} <- lift ask
     userId <- liftIO $ withResource connPool $ \conn -> do
         [Only uid] <- query conn stmt (email, pwHash)
@@ -112,3 +151,6 @@ addUser = do
         stmt = [sql|
             INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
         |]
+
+validate :: Email -> Password -> Password -> Maybe (NonEmpty Text)
+validate email pass pass2 = undefined
