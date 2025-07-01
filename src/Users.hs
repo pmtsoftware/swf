@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -15,14 +16,16 @@ import Web.Scotty.Trans (ScottyT, ActionT)
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
-import TextShow
+import Text.Email.Validate (EmailAddress)
+import qualified Text.Email.Validate as EVal
+import TextShow hiding (toString, toText)
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
 import Data.Password.Validate
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Relude.Extra.Newtype (un)
 import Validation
-import Relude.Unsafe (fromJust)
+import qualified Text.Email.Validate as EmailV
 
 newtype UserId = UserId { unUserId :: Int64 }
     deriving (Show, Eq, Generic)
@@ -56,38 +59,50 @@ instance FromRow User where
     fromRow = User <$> field <*> field <*> field <*> field
 
 data Form = Form
-    { formEmail :: Text
+    { formUserId :: Maybe UserId
+    , formEmail :: Text
     , formPassword :: Text
     , formPassword2 :: Text
     }
 
+def :: Form
+def = Form
+    { formUserId = Nothing
+    , formEmail = ""
+    , formPassword = ""
+    , formPassword2 = ""
+    }
+
 data FormValidationError
     = InvalidEmail !Text
-    | InvalidPass  !(NonEmpty Text)
+    | InvalidPass  [InvalidReason]
     | Paswword2Mismatch
 
-validatePass :: Text -> Validation (NonEmpty FormValidationError) Password
-validatePass input = mkPassword input <$ failureIf (isJust result) undefined
+validateEmail :: Text -> Validation (NonEmpty FormValidationError) Email
+validateEmail emailInput = eitherToValidation result
     where
-        result = getErrs $ validatePassword defaultPasswordPolicy_ $ mkPassword input
+        result = bimap toErr toEmail . EmailV.validate $ encodeUtf8 @Text @ByteString emailInput
+        toErr = (:|[]) . InvalidEmail . toText
+        toEmail = Email . decodeUtf8 . EmailV.toByteString
 
-        getErrs :: ValidationResult -> Maybe (NonEmpty FormValidationError)
+validatePasswd :: Text -> Validation (NonEmpty FormValidationError) Password
+validatePasswd inputPass = mkPassword inputPass <$ failureIf (isJust result) (InvalidPass (fromMaybe [] result))
+    where
+        result = getErrs $ validatePassword defaultPasswordPolicy_ $ mkPassword inputPass
+        getErrs :: ValidationResult -> Maybe [InvalidReason]
         getErrs ValidPassword = Nothing
-        getErrs (InvalidPassword errs) = nonEmpty $ undefined
+        getErrs (InvalidPassword errs) = Just errs
 
-        report :: InvalidReason -> Text
-        report (PasswordTooShort minLen x) = "Password is too short. Min length " <> showt minLen <> " characters."
-        report (PasswordTooLong maxLen x) = "Password too long. Maz length " <> showt maxLen <> " characters."
-        report (NotEnoughReqChars Uppercase minAmount x) = "At least " <> showt minAmount <> " of uppercase letters required."
-        report (NotEnoughReqChars Lowercase minAmount x) = "At least " <> showt minAmount <> " of lowercase letters required."
-        report (NotEnoughReqChars Special minAmount x) = "At least " <> showt minAmount <> " of special characters required."
-        report (NotEnoughReqChars Digit minAmount x) = "At least " <> showt minAmount <> " of digits required."
-        report (InvalidCharacters chars) = "Password contains chracters than cannot be used: " <> chars
+validateForm :: Form -> Validation (NonEmpty FormValidationError) (Email, Password)
+validateForm Form{..} = (,)
+    <$> validateEmail formEmail
+    <*> validatePasswd formPassword
+
 
 users :: ScottyT App ()
 users = do
     Scotty.get "/users" listOfUsers
-    Scotty.get "/add-user" addUserForm
+    Scotty.get "/add-user" $ userForm def Nothing
     Scotty.post "/add-user" addUser
     Scotty.get "/user/:id" $ do
         Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
@@ -118,39 +133,67 @@ listOfUsers = do
             SELECT id, email, locked_at, failed_login_attempts FROM users;
         |]
 
-addUserForm :: ActionT App ()
-addUserForm = Scotty.html . renderHtml $ markup
+userForm :: Form -> Maybe (NonEmpty FormValidationError) -> ActionT App ()
+userForm Form{..} errors = Scotty.html . renderHtml $ markup
     where
         markup = layout $ do
             h1 "Add user"
             form ! method "POST" $ do
+                whenJust formUserId $ \(UserId uid) -> input ! name "id" ! type_ "hidden" ! value (toValue uid)
                 label $ do
                     "Email"
-                    input ! required "required" ! name "email" ! type_ "email"
+                    input ! required "required" ! name "email" ! type_ "email" ! value (toValue formEmail)
+                    whenJust errors $ \errs -> renderEmailErrors errs
                 label $ do
                     "Password"
-                    input ! required "required" ! name "password" ! type_ "password"
+                    input ! required "required" ! name "password" ! type_ "password" ! value (toValue formPassword)
+                    whenJust errors $ \errs -> renderPasswordErrors errs
                 label $ do
                     "Confirm password"
-                    input ! required "required" ! name "password2" ! type_ "password"
+                    input ! required "required" ! name "password2" ! type_ "password" ! value (toValue formPassword2)
                 button ! type_ "submit" $ "Save"
+
+renderEmailErrors :: NonEmpty FormValidationError -> Html
+renderEmailErrors errs = ul $ forM_ errs render
+    where
+        render :: FormValidationError -> Html
+        render (InvalidEmail reason) = li $ "Invalid email: " <> text reason
+        render _ = mempty
+
+renderPasswordErrors :: NonEmpty FormValidationError -> Html
+renderPasswordErrors errs = ul $ forM_ errs render
+    where
+        render :: FormValidationError -> Html
+        render (InvalidPass rs) = forM_ rs render'
+        render Paswword2Mismatch = li "Mismatch with second password field"
+        render _ = mempty
+        render' :: InvalidReason -> Html
+        render' (PasswordTooShort minLen _) = li $ "Password is too short. Min length " <> text (showt minLen) <> " characters."
+        render' (PasswordTooLong maxLen _) = li $ "Password too long. Maz length " <> text (showt maxLen) <> " characters."
+        render' (NotEnoughReqChars Uppercase minAmount _) = li $ "At least " <> text (showt minAmount) <> " of uppercase letters required."
+        render' (NotEnoughReqChars Lowercase minAmount _) = li $ "At least " <> text (showt minAmount) <> " of lowercase letters required."
+        render' (NotEnoughReqChars Special minAmount _) = li $ "At least " <> text (showt minAmount) <> " of special characters required."
+        render' (NotEnoughReqChars Digit minAmount _) = li $ "At least " <> text (showt minAmount) <> " of digits required."
+        render' (InvalidCharacters chars) = li $ "Password contains chracters than cannot be used: " <> text chars
 
 addUser :: ActionT App ()
 addUser = do
-    Form{..} <- Form <$> Scotty.formParam "email" <*> Scotty.formParam "password" <*> Scotty.formParam "password2"
-    email <- Email <$> Scotty.formParam @Text "email"
-    pass <- mkPassword <$> Scotty.formParam @Text "password"
-    pass2 <- mkPassword <$> Scotty.formParam @Text "password2"
-    pwHash <- hashPassword pass
-    AppEnv{..} <- lift ask
-    userId <- liftIO $ withResource connPool $ \conn -> do
-        [Only uid] <- query conn stmt (email, pwHash)
-        return (uid :: UserId)
-    Scotty.redirect $ "/user/" <> showtl userId
+    formData <- Form Nothing
+        <$> Scotty.formParam "email"
+        <*> Scotty.formParam "password"
+        <*> Scotty.formParam "password2"
+    let validated = validateForm formData
+    whenSuccess_ validated $ \(email_, pass_) -> do
+        pwHash <- hashPassword pass_
+        AppEnv{..} <- lift ask
+        userId <- liftIO $ withResource connPool $ \conn -> do
+            [Only uid] <- query conn stmt (email_, pwHash)
+            return (uid :: UserId)
+        Scotty.redirect $ "/user/" <> showtl userId
+    whenFailure_ validated $ \errs -> do
+        userForm formData $ Just errs
     where
         stmt = [sql|
             INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
         |]
 
-validate :: Email -> Password -> Password -> Maybe (NonEmpty Text)
-validate email pass pass2 = undefined
