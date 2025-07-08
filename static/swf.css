@@ -22,6 +22,12 @@ form {
     align-items: flex-start;
 
     label {
+        width: 100%;
+
+        textarea {
+            width: 100%;
+        }
+
         ul:has(li) {
             border: 1px solid var(--red-800);
             background-color: var(--red-200);
