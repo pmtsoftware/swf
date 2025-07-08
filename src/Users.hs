@@ -7,7 +7,7 @@
 
 module Users ( users ) where
 
-import Common
+import Common hiding (pass)
 import Homepage (layout)
 
 import qualified Web.Scotty.Trans as Scotty
@@ -17,7 +17,7 @@ import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Text.Email.Validate (EmailAddress)
-import qualified Text.Email.Validate as EVal
+import qualified Text.Email.Validate as EmailV
 import TextShow hiding (toString, toText)
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
 import Data.Password.Validate
@@ -25,7 +25,6 @@ import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Relude.Extra.Newtype (un)
 import Validation
-import qualified Text.Email.Validate as EmailV
 
 newtype UserId = UserId { unUserId :: Int64 }
     deriving (Show, Eq, Generic)
@@ -85,18 +84,24 @@ validateEmail emailInput = eitherToValidation result
         toErr = (:|[]) . InvalidEmail . toText
         toEmail = Email . decodeUtf8 . EmailV.toByteString
 
-validatePasswd :: Text -> Validation (NonEmpty FormValidationError) Password
-validatePasswd inputPass = mkPassword inputPass <$ failureIf (isJust result) (InvalidPass (fromMaybe [] result))
+validatePasswd :: Text -> Text -> Validation (NonEmpty FormValidationError) Password
+validatePasswd pass pass2 = validatePassPolicy pass *> validatePassword2 pass pass2
+
+validatePassPolicy :: Text -> Validation (NonEmpty FormValidationError) Password
+validatePassPolicy inputPass = mkPassword inputPass <$ failureIf (isJust result) (InvalidPass (fromMaybe [] result))
     where
         result = getErrs $ validatePassword defaultPasswordPolicy_ $ mkPassword inputPass
         getErrs :: ValidationResult -> Maybe [InvalidReason]
         getErrs ValidPassword = Nothing
         getErrs (InvalidPassword errs) = Just errs
 
+validatePassword2 :: Text -> Text -> Validation (NonEmpty FormValidationError) Password
+validatePassword2 inputPass inputPass2 = mkPassword inputPass <$ failureIf (inputPass /= inputPass2) Paswword2Mismatch
+
 validateForm :: Form -> Validation (NonEmpty FormValidationError) (Email, Password)
 validateForm Form{..} = (,)
     <$> validateEmail formEmail
-    <*> validatePasswd formPassword
+    <*> validatePasswd formPassword formPassword2
 
 
 users :: ScottyT App ()
