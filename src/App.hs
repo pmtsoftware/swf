@@ -6,6 +6,7 @@ module App
 import Common
 
 import Users
+import PnL
 import Homepage
 import Db
 
@@ -53,6 +54,7 @@ application = do
             Scotty.html renderHomepage
         users
         auth
+        pnl
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
