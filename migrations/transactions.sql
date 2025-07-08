@@ -1,0 +1,6 @@
+CREATE TABLE transactions (
+    id bigint GENERATED ALWAYS AS IDENTITY,
+    name TEXT NOT NULL,
+    value NUMERIC(6, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+)

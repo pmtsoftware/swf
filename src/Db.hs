@@ -11,4 +11,5 @@ migrateDb :: Connection -> IO (MigrationResult String)
 migrateDb conn = runMigrations conn defaultOptions
     [ MigrationInitialization
     , MigrationFile "users.sql" "./migrations/users.sql"
+    , MigrationFile "transactions.sql" "./migrations/transactions.sql"
     ]
