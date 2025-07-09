@@ -65,6 +65,7 @@ library:
   - clientsession
   - cereal
   - cereal-text
+  - scientific
 
 executables:
   swf-exe:
