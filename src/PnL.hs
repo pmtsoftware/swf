@@ -15,14 +15,12 @@ import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import TextShow hiding (toText)
-import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
-import Relude.Extra.Newtype (un)
 import Homepage (layout)
 import Control.Monad.Logger (logErrorN)
 import Data.Scientific (Scientific)
 import qualified Data.Scientific as Scientific
-import Database.PostgreSQL.Simple.FromField (Format(Text))
+import Session (ensureSession)
 
 newtype TransactionId = TransactionId Int64
     deriving (Show, Eq, Generic)
@@ -47,9 +45,9 @@ instance FromRow Transaction where
 
 pnl :: ScottyT App ()
 pnl = do
-    Scotty.get "/pnl" $ Scotty.rescue transactions logSqlError
-    Scotty.get "/add-transaction" addTransactionForm
-    Scotty.post "/add-transaction" addTransaction
+    Scotty.get "/pnl" $ ensureSession >> Scotty.rescue transactions logSqlError
+    Scotty.get "/add-transaction" $ ensureSession >> addTransactionForm
+    Scotty.post "/add-transaction" $ ensureSession >> addTransaction
     Scotty.get "/error" errorPage
 
 logSqlError :: SomePostgreSqlException -> ActionT App ()
@@ -116,7 +114,7 @@ addTransaction = do
     description <- Scotty.formParam @Text "description"
     val <- Value <$> Scotty.formParam @Double "value"
     AppEnv{..} <- lift ask
-    transactionId <- liftIO $ withResource connPool $ \conn -> do
+    _ <- liftIO $ withResource connPool $ \conn -> do
         [Only tid] <- query conn stmt (description, val)
         return (tid :: TransactionId)
     Scotty.redirect "/pnl"

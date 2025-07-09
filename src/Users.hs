@@ -20,6 +20,7 @@ import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Relude.Extra.Newtype (un)
 import Validation
+import Session (ensureSession)
 
 newtype PlainPassword = PlainPassword Text
     deriving (Show, Eq)
@@ -86,10 +87,11 @@ validateForm Form{..} = (,)
 
 users :: ScottyT App ()
 users = do
-    Scotty.get "/users" listOfUsers
-    Scotty.get "/add-user" $ userForm def Nothing
-    Scotty.post "/add-user" addUser
+    Scotty.get "/users" $ ensureSession >> listOfUsers
+    Scotty.get "/add-user" $ ensureSession >> userForm def Nothing
+    Scotty.post "/add-user" $ ensureSession >> addUser
     Scotty.get "/user/:id" $ do
+        ensureSession
         Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
 
 listOfUsers :: ActionT App ()

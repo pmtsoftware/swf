@@ -42,8 +42,9 @@ application = do
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
             ensureSession
-            lift $ logInfoN "GET home page"
-            Scotty.html renderHomepage
+            -- lift $ logInfoN "GET home page"
+            -- Scotty.html renderHomepage
+            Scotty.redirect "/pnl"
         users
         auth
         pnl

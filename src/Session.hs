@@ -78,7 +78,7 @@ login = do
                     sessionBS = Bin.encode session
                 encrypted <- liftIO $ Sess.encryptIO k (fromLazy sessionBS)
                 Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
-                Scotty.redirect "/login-successed"
+                Scotty.redirect "/"
             PasswordCheckFail -> do
                 lift . logErrorN $ "Invalid password"
                 Scotty.redirect "/login-failed"
