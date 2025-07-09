@@ -15,7 +15,7 @@ import Web.Scotty.Trans (ScottyT)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
 import Control.Monad.Logger (runStdoutLoggingT, logInfoN)
 import Web.ClientSession (getDefaultKey)
-import Session (auth)
+import Session (auth, ensureSession)
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -40,6 +40,7 @@ application :: ScottyT App ()
 application = do
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
+            ensureSession
             lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
         users

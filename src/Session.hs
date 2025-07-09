@@ -1,6 +1,11 @@
-module Session where
+module Session
+( auth
+, ensureSession
+) where
 
 import Common
+import Types
+import Homepage (layout)
 
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT, ActionT)
@@ -10,9 +15,9 @@ import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), Argon2, checkPassword, PasswordCheck (..))
 import qualified Data.Binary as Bin
-import Homepage (layout)
 import Control.Monad.Logger (logErrorN)
-import Types
+import qualified Web.ClientSession as Sess
+import qualified Web.Scotty.Cookie as Cookie
 
 data SessionData = MkSessionData
     { sessionEmail :: !Text
@@ -68,8 +73,11 @@ login = do
         check :: [(UserId, PasswordHash Argon2)] -> Password -> Text -> ActionT App ()
         check [(uid, pHash)] userPass userEmail = case checkPassword userPass pHash of
             PasswordCheckSuccess -> do
+                k <- lift $ asks sessionKey
                 let session = MkSessionData userEmail uid
                     sessionBS = Bin.encode session
+                encrypted <- liftIO $ Sess.encryptIO k (fromLazy sessionBS)
+                Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
                 Scotty.redirect "/login-successed"
             PasswordCheckFail -> do
                 lift . logErrorN $ "Invalid password"
@@ -80,4 +88,17 @@ login = do
         stmt = [sql|
             SELECT id, password FROM users WHERE email = ?
         |]
+
+ensureSession :: ActionT App ()
+ensureSession = do
+    k <- lift $ asks sessionKey
+    encrypted <- Cookie.getCookie "swf-session"
+    let decrypted = encrypted >>= Sess.decrypt k . encodeUtf8
+        maybeSessionData = decrypted >>= decodeSession . toLazy
+    whenNothing_ maybeSessionData $ Scotty.redirect "/login"
+    where
+        decodeSession :: LByteString -> Maybe SessionData
+        decodeSession = fmap thrd . rightToMaybe . Bin.decodeOrFail @SessionData
+        thrd :: (a, b, c) -> c
+        thrd (_, _, x) = x
 
