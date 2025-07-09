@@ -67,6 +67,7 @@ library
     , postgresql-simple
     , relude
     , resource-pool
+    , scientific
     , scotty
     , text-show
     , time

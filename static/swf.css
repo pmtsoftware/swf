@@ -41,3 +41,27 @@ form {
         }
     }
 }
+
+#transactions {
+    & thead {
+        & th:nth-child(1) {
+            width: 4em;
+        }
+        & th:nth-child(3) {
+            width: 8em;
+            text-align: right;
+        }
+    }
+
+    & tbody {
+        & td:nth-child(3) {
+            text-align: right;
+        }
+    }
+
+    & tfoot {
+        & th:nth-child(2) {
+            text-align: right;
+        }
+    }
+}
