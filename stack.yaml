@@ -39,7 +39,8 @@ packages:
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
-# extra-deps: []
+extra-deps:
+  - validation-selective-0.2.0.0
 
 # Override default flag values for project packages and extra-deps
 # flags: {}
@@ -66,3 +67,7 @@ packages:
 # compiler-check: newer-minor
 
 notify-if-nix-on-path: false
+
+allow-newer: true
+allow-newer-deps:
+  - validation-selective

@@ -58,6 +58,8 @@ library:
   - password
   - text-show
   - time
+  - email-validate
+  - validation-selective
 
 executables:
   swf-exe:
