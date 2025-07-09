@@ -21,7 +21,7 @@ layout cssChecksum innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ d
         link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
         -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
         link ! href ("/static/swf.css?checksum=" <> checksumAV) ! rel "stylesheet"
-        script ! type_ "module" ! src "/static/dev.js" $ mempty
+        -- script ! type_ "module" ! src "/static/dev.js" $ mempty
         script ! src "https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" $ mempty
     body ! htmxBoost $ do
         main $ do

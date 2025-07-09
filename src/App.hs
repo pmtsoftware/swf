@@ -53,9 +53,9 @@ application = do
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
             ensureSession
-            checksum <- lift $ asks cssChecksum
-            lift $ logInfoN "GET home page"
-            Scotty.html $ renderHomepage checksum
+            -- lift $ logInfoN "GET home page"
+            -- Scotty.html renderHomepage
+            Scotty.redirect "/pnl"
         users
         auth
         pnl
