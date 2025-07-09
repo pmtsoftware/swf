@@ -60,6 +60,8 @@ library:
   - time
   - email-validate
   - validation-selective
+  - clientsession
+  - binary
 
 executables:
   swf-exe:

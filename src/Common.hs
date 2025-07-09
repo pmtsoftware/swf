@@ -24,10 +24,12 @@ import Database.PostgreSQL.Simple.ToField (ToField (toField))
 import Data.Pool
 import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, MonadLogger)
+import Web.ClientSession (Key)
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
     , connPool :: Pool Connection
+    , sessionKey :: Key
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }

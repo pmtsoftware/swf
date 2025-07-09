@@ -1,13 +1,9 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Users ( users ) where
 
 import Common hiding (pass)
+import Types
 import Homepage (layout)
 
 import qualified Web.Scotty.Trans as Scotty
@@ -16,36 +12,20 @@ import Web.Scotty.Trans (ScottyT, ActionT)
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
-import Text.Email.Validate (EmailAddress)
 import qualified Text.Email.Validate as EmailV
 import TextShow hiding (toString, toText)
-import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), hashPassword)
+import Data.Password.Argon2 (Password, mkPassword, hashPassword)
 import Data.Password.Validate
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Relude.Extra.Newtype (un)
 import Validation
 
-newtype UserId = UserId { unUserId :: Int64 }
-    deriving (Show, Eq, Generic)
-deriving newtype instance FromField UserId
-deriving newtype instance ToField UserId
-deriving newtype instance TextShow UserId
-
-newtype Email = Email { unEmail :: Text }
-    deriving (Show, Eq, Generic)
-deriving newtype instance FromField Email
-deriving newtype instance ToField Email
-
 newtype PlainPassword = PlainPassword Text
     deriving (Show, Eq)
 
 newtype PlainPassword2 = PlainPassword2 Text
     deriving (Show, Eq)
-
-deriving instance Generic (PasswordHash a)
-deriving newtype instance FromField (PasswordHash a)
-deriving newtype instance ToField (PasswordHash a)
 
 data User = User
     { userId :: UserId

@@ -14,6 +14,8 @@ import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
 import Control.Monad.Logger (runStdoutLoggingT, logInfoN)
+import Web.ClientSession (getDefaultKey)
+import Session (auth)
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -30,7 +32,8 @@ startWithConfig cfg@AppConfig{..} = do
                     10
     pool <- newPool $ setNumStripes (Just 1) poolCfg
     _ <- withResource pool migrateDb
-    let env = AppEnv cfg pool
+    key <- getDefaultKey
+    let env = AppEnv cfg pool key
     Scotty.scottyT appPort (runIO env) application
 
 application :: ScottyT App ()
@@ -40,6 +43,7 @@ application = do
             lift $ logInfoN "GET home page"
             Scotty.html renderHomepage
         users
+        auth
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
