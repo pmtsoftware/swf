@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Session
 ( auth
 , ensureSession
@@ -19,10 +21,23 @@ import Data.Serialize.Text ()
 import Control.Monad.Logger (logErrorN)
 import qualified Web.ClientSession as Sess
 import qualified Web.Scotty.Cookie as Cookie
+import Data.Time.Clock (UTCTime(..), DiffTime, diffTimeToPicoseconds, picosecondsToDiffTime, getCurrentTime)
+import Data.Time.Calendar (Day (..), toModifiedJulianDay)
+
+instance Bin.Serialize Day where
+  put = Bin.put . toModifiedJulianDay
+  get = ModifiedJulianDay <$> Bin.get
+instance Bin.Serialize DiffTime where
+  put = Bin.put . diffTimeToPicoseconds
+  get = picosecondsToDiffTime <$> Bin.get
+instance Bin.Serialize UTCTime where
+  put UTCTime {..} = Bin.put utctDay >> Bin.put utctDayTime
+  get = UTCTime <$> Bin.get <*> Bin.get
 
 data SessionData = MkSessionData
     { sessionEmail :: !Text
     , sessionUserId :: !UserId
+    , sessionTimestamp :: !UTCTime -- TODO: change name to expiration and validate
     }
     deriving (Show, Eq, Generic)
 instance Bin.Serialize SessionData
@@ -75,7 +90,8 @@ login = do
         check [(uid, pHash)] userPass userEmail = case checkPassword userPass pHash of
             PasswordCheckSuccess -> do
                 k <- lift $ asks sessionKey
-                let session = MkSessionData userEmail uid
+                ct <- liftIO getCurrentTime
+                let session = MkSessionData userEmail uid ct
                     sessionBS = Bin.encode session
                 encrypted <- liftIO $ Sess.encryptIO k  sessionBS
                 Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
