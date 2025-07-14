@@ -12,7 +12,7 @@ module Types
 import Common
 
 import TextShow hiding (toString, toText)
-import qualified Data.Binary as Bin
+import qualified Data.Serialize as Bin
 import Data.Password.Argon2 (PasswordHash (..))
 
 newtype UserId = UserId { unUserId :: Int64 }
@@ -20,7 +20,7 @@ newtype UserId = UserId { unUserId :: Int64 }
 deriving newtype instance FromField UserId
 deriving newtype instance ToField UserId
 deriving newtype instance TextShow UserId
-instance Bin.Binary UserId
+deriving newtype instance Bin.Serialize UserId
 
 newtype Email = Email { unEmail :: Text }
     deriving (Show, Eq, Generic)

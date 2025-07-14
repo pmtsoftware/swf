@@ -14,7 +14,8 @@ import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), Argon2, checkPassword, PasswordCheck (..))
-import qualified Data.Binary as Bin
+import qualified Data.Serialize as Bin
+import Data.Serialize.Text ()
 import Control.Monad.Logger (logErrorN)
 import qualified Web.ClientSession as Sess
 import qualified Web.Scotty.Cookie as Cookie
@@ -24,7 +25,7 @@ data SessionData = MkSessionData
     , sessionUserId :: !UserId
     }
     deriving (Show, Eq, Generic)
-instance Bin.Binary SessionData
+instance Bin.Serialize SessionData
 
 data Form = Form
     { formEmail :: !Text
@@ -76,7 +77,7 @@ login = do
                 k <- lift $ asks sessionKey
                 let session = MkSessionData userEmail uid
                     sessionBS = Bin.encode session
-                encrypted <- liftIO $ Sess.encryptIO k (fromLazy sessionBS)
+                encrypted <- liftIO $ Sess.encryptIO k  sessionBS
                 Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
                 Scotty.redirect "/login-successed"
             PasswordCheckFail -> do
@@ -94,11 +95,9 @@ ensureSession = do
     k <- lift $ asks sessionKey
     encrypted <- Cookie.getCookie "swf-session"
     let decrypted = encrypted >>= Sess.decrypt k . encodeUtf8
-        maybeSessionData = decrypted >>= decodeSession . toLazy
+        maybeSessionData = decrypted >>= decodeSession
     whenNothing_ maybeSessionData $ Scotty.redirect "/login"
     where
-        decodeSession :: LByteString -> Maybe SessionData
-        decodeSession = fmap thrd . rightToMaybe . Bin.decodeOrFail @SessionData
-        thrd :: (a, b, c) -> c
-        thrd (_, _, x) = x
+        decodeSession :: ByteString -> Maybe SessionData
+        decodeSession = rightToMaybe . Bin.decode @SessionData
 
