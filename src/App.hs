@@ -13,6 +13,7 @@ import qualified Web.Scotty.Trans as Scotty
 
 import Web.Scotty.Trans (ScottyT)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
+import qualified Network.Wai.Handler.Warp as Warp
 import Control.Monad.Logger (runStdoutLoggingT, logInfoN)
 import Web.ClientSession (getDefaultKey)
 import Session (auth, ensureSession)
@@ -21,10 +22,10 @@ runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
 
 start :: IO ()
-start = loadAppConfig >>= startWithConfig
+start = loadAppConfig >>= startWithConfig nop
 
-startWithConfig :: AppConfig -> IO ()
-startWithConfig cfg@AppConfig{..} = do
+startWithConfig :: IO () -> AppConfig -> IO ()
+startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     let poolCfg = defaultPoolConfig
                     (connectPostgreSQL "")
                     close
@@ -34,7 +35,14 @@ startWithConfig cfg@AppConfig{..} = do
     _ <- withResource pool migrateDb
     key <- getDefaultKey
     let env = AppEnv cfg pool key
-    Scotty.scottyT appPort (runIO env) application
+        warpSettings = Warp.setPort appPort
+            . Warp.setBeforeMainLoop beforeMainLoop
+            $ Warp.defaultSettings
+        webOpts = Scotty.defaultOptions { Scotty.settings = warpSettings }
+    Scotty.scottyOptsT webOpts (runIO env) application
+
+nop :: IO ()
+nop = return ()
 
 application :: ScottyT App ()
 application = do
@@ -48,3 +56,4 @@ application = do
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
+

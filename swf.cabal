@@ -69,6 +69,7 @@ library
     , unliftio
     , validation-selective
     , wai-app-static
+    , warp
   default-language: Haskell2010
 
 executable swf-dev

@@ -15,7 +15,10 @@ import Control.Concurrent (forkIO)
 main :: IO ()
 main = do
     config <- loadAppConfig
-    _ <- forkIO $ startWithConfig config
+    m <- newEmptyMVar
+    let appUp = putMVar m ()
+    _ <- forkIO $ startWithConfig appUp config
+    _ <- takeMVar m
     specs <- concat <$> mapM testSpecs [spec_hello_world config]
     defaultMain $ testGroup "Tests" [testGroup "Specs" specs]
 
