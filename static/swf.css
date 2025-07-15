@@ -1,3 +1,17 @@
+:root {
+    --red-50:  #fef2f2;
+    --red-100: #fee2e2;
+    --red-200: #fecaca;
+    --red-300: #fca5a5;
+    --red-400: #f87171;
+    --red-500: #ef4444;
+    --red-600: #dc2626;
+    --red-700: #b91c1c;
+    --red-800: #991b1b;
+    --red-900: #7f1d1d;
+    --red-950: #450a0a;
+}
+
 body {
     /*background-color: red;*/
 }
@@ -6,4 +20,18 @@ form {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+
+    label {
+        ul:has(li) {
+            border: 1px solid var(--red-800);
+            background-color: var(--red-200);
+            color: var(--red-800);
+            border-radius: .5em;
+            padding: .5em;
+
+            li {
+                margin-left: 1em;
+            }
+        }
+    }
 }

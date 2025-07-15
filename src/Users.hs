@@ -6,20 +6,22 @@ import Common hiding (pass)
 import Types
 import Homepage (layout)
 
+import qualified Text.Email.Validate as EmailV
+import Text.Email.Validate (EmailAddress)
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT, ActionT)
 
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
-import qualified Text.Email.Validate as EmailV
 import TextShow hiding (toString, toText)
 import Data.Password.Argon2 (Password, mkPassword, hashPassword)
 import Data.Password.Validate
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
-import Relude.Extra.Newtype (un)
 import Validation
+import Relude.Extra.Newtype (un)
+import Network.HTTP.Types (badRequest400)
 
 newtype PlainPassword = PlainPassword Text
     deriving (Show, Eq)
@@ -39,7 +41,7 @@ instance FromRow User where
 
 data Form = Form
     { formUserId :: Maybe UserId
-    , formEmail :: !Text
+    , formEmail :: !ByteString
     , formPassword :: !Text
     , formPassword2 :: !Text
     }
@@ -53,15 +55,14 @@ def = Form
     }
 
 data FormValidationError
-    = InvalidEmail !Text
+    = InvalidEmail
     | InvalidPass  [InvalidReason]
     | Paswword2Mismatch
 
-validateEmail :: Text -> Validation (NonEmpty FormValidationError) Email
-validateEmail emailInput = eitherToValidation result
+validateEmail :: ByteString -> Validation (NonEmpty FormValidationError) Email
+validateEmail emailInput = maybeToSuccess (InvalidEmail :| []) $ toEmail <$> EmailV.emailAddress emailInput
     where
-        result = bimap toErr toEmail . EmailV.validate $ encodeUtf8 @Text @ByteString emailInput
-        toErr = (:|[]) . InvalidEmail . toText
+        toEmail :: EmailAddress -> Email
         toEmail = Email . decodeUtf8 . EmailV.toByteString
 
 validatePasswd :: Text -> Text -> Validation (NonEmpty FormValidationError) Password
@@ -127,7 +128,7 @@ userForm Form{..} errors = Scotty.html . renderHtml $ markup
                 whenJust formUserId $ \(UserId uid) -> input ! name "id" ! type_ "hidden" ! value (toValue uid)
                 label $ do
                     "Email"
-                    input ! required "required" ! name "email" ! type_ "email" ! value (toValue formEmail)
+                    input ! required "required" ! name "email" ! type_ "email" ! value (toValue $ decodeUtf8 @Text formEmail)
                     whenJust errors $ \errs -> renderEmailErrors errs
                 label $ do
                     "Password"
@@ -142,7 +143,7 @@ renderEmailErrors :: NonEmpty FormValidationError -> Html
 renderEmailErrors errs = ul $ forM_ errs render
     where
         render :: FormValidationError -> Html
-        render (InvalidEmail reason) = li $ "Invalid email: " <> text reason
+        render InvalidEmail = li "Invalid email address"
         render _ = mempty
 
 renderPasswordErrors :: NonEmpty FormValidationError -> Html
@@ -192,5 +193,7 @@ addUserHandler = do
         handleSucces userId = Scotty.redirect $ "/user/" <> showtl userId
 
         handleError :: Form -> NonEmpty FormValidationError -> ActionT App ()
-        handleError f errs = userForm f $ Just errs
+        handleError f errs = do
+            Scotty.status badRequest400
+            userForm f $ Just errs
 

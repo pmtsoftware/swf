@@ -57,6 +57,7 @@ library
     , dotenv
     , email-validate
     , envy
+    , http-types
     , monad-logger
     , password
     , postgresql-migration
