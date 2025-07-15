@@ -39,9 +39,9 @@ instance FromRow User where
 
 data Form = Form
     { formUserId :: Maybe UserId
-    , formEmail :: Text
-    , formPassword :: Text
-    , formPassword2 :: Text
+    , formEmail :: !Text
+    , formPassword :: !Text
+    , formPassword2 :: !Text
     }
 
 def :: Form
@@ -88,7 +88,7 @@ users :: ScottyT App ()
 users = do
     Scotty.get "/users" listOfUsers
     Scotty.get "/add-user" $ userForm def Nothing
-    Scotty.post "/add-user" addUser
+    Scotty.post "/add-user" addUserHandler
     Scotty.get "/user/:id" $ do
         Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
 
@@ -161,24 +161,36 @@ renderPasswordErrors errs = ul $ forM_ errs render
         render' (NotEnoughReqChars Digit minAmount _) = li $ "At least " <> text (showt minAmount) <> " of digits required."
         render' (InvalidCharacters chars) = li $ "Password contains chracters than cannot be used: " <> text chars
 
-addUser :: ActionT App ()
-addUser = do
+-- TODO: handle SQL errors
+createUser :: AppEnv -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
+createUser env formData = case validateForm formData of
+    Success data' -> Right <$> run env data'
+    Failure errs -> pure $ Left errs
+    where
+        run :: AppEnv -> (Email, Password) -> IO UserId
+        run AppEnv{..} (mail, pass) = do
+            pwHash <- hashPassword pass
+            liftIO $ withResource connPool $ \conn -> do
+                [Only uid] <- query conn stmt (mail, pwHash)
+                return (uid :: UserId)
+
+        stmt = [sql|
+            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
+        |]
+
+addUserHandler :: ActionT App ()
+addUserHandler = do
     formData <- Form Nothing
         <$> Scotty.formParam "email"
         <*> Scotty.formParam "password"
         <*> Scotty.formParam "password2"
-    let validated = validateForm formData
-    whenSuccess_ validated $ \(email_, pass_) -> do
-        pwHash <- hashPassword pass_
-        AppEnv{..} <- lift ask
-        userId <- liftIO $ withResource connPool $ \conn -> do
-            [Only uid] <- query conn stmt (email_, pwHash)
-            return (uid :: UserId)
-        Scotty.redirect $ "/user/" <> showtl userId
-    whenFailure_ validated $ \errs -> do
-        userForm formData $ Just errs
+    env <- lift ask
+    result <- liftIO $ createUser env formData
+    either (handleError formData) handleSucces result
     where
-        stmt = [sql|
-            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
-        |]
+        handleSucces :: UserId -> ActionT App ()
+        handleSucces userId = Scotty.redirect $ "/user/" <> showtl userId
+
+        handleError :: Form -> NonEmpty FormValidationError -> ActionT App ()
+        handleError f errs = userForm f $ Just errs
 
