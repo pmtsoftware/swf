@@ -1,6 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Config (AppConfig(..), loadAppConfig) where
+module Config
+    ( AppConfig(..)
+    , loadAppConfig
+    , loadTestConfig
+    ) where
 
 import Relude
 
@@ -30,6 +34,12 @@ instance DefConfig AppConfig where
 instance FromEnv AppConfig
 
 loadAppConfig :: IO AppConfig
-loadAppConfig = do
-    loadFile defaultConfig -- loading env variables from .env* file
+loadAppConfig = loadConfig defaultConfig
+
+loadTestConfig :: IO AppConfig
+loadTestConfig = loadConfig $ defaultConfig { configPath = [ ".env.test" ] }
+
+loadConfig :: Config -> IO AppConfig
+loadConfig cfg = do
+    loadFile cfg -- loading env variables from .env* file
     fromRight defConfig <$> decodeEnv @AppConfig

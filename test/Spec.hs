@@ -14,7 +14,7 @@ import Control.Concurrent (forkIO)
 
 main :: IO ()
 main = do
-    config <- loadAppConfig
+    config <- loadTestConfig
     m <- newEmptyMVar
     let appUp = putMVar m ()
     _ <- forkIO $ startWithConfig appUp config
