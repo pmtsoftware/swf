@@ -127,6 +127,7 @@ userForm :: Form -> Maybe (NonEmpty FormValidationError) -> ActionT App ()
 userForm Form{..} errors = Scotty.html . renderHtml $ markup
     where
         markup = layout $ do
+            a ! href "/users" $ "Back"
             h1 "Add user"
             form ! method "POST" $ do
                 whenJust formUserId $ \(UserId uid) -> input ! name "id" ! type_ "hidden" ! value (toValue uid)
