@@ -50,6 +50,7 @@ library:
   - warp
   - unliftio
   - scotty
+  - http-types
   - blaze-html
   - postgresql-simple
   - postgresql-migration
