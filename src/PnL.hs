@@ -18,9 +18,11 @@ import TextShow hiding (toText)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Homepage (layoutM)
 import Control.Monad.Logger (logErrorN)
-import Data.Scientific (Scientific)
+import Data.Scientific (Scientific, scientific)
 import qualified Data.Scientific as Scientific
+import qualified Data.Text as T
 import Session (ensureSession)
+import Validation
 
 newtype TransactionId = TransactionId Int64
     deriving (Show, Eq, Generic)
@@ -42,6 +44,44 @@ data Transaction = Transaction
     deriving (Show, Generic)
 instance FromRow Transaction where
     fromRow = Transaction <$> field <*> field <*> field
+
+data Form = Form
+    { formId :: !(Maybe TransactionId)
+    , formName :: !Text
+    , formValue :: !Scientific
+    }
+
+data ValidationError
+    = EmptyName
+    | NameTooLong
+    | ValueToHigh
+    | ValueToLow
+
+data FieldError = FieldError
+    { fName    :: !Text
+    , fError   :: !ValidationError
+    }
+
+maxValue :: Scientific
+maxValue = scientific 99999999 (-2)
+
+minValue :: Scientific
+minValue = scientific (-99999999) (-2)
+
+validateName :: Text -> Validation (NonEmpty FieldError) Text
+validateName fName = validateNameNotEmpty fName <* validateNameTooLong fName
+    where
+        validateNameNotEmpty x = x <$ failureIf (T.null fName) (FieldError "name" EmptyName)
+        validateNameTooLong x = x <$ failureIf (T.length fName > 256) (FieldError "name" NameTooLong)
+
+validateValue :: Scientific -> Validation (NonEmpty FieldError) Scientific
+validateValue val = validateMaxValue val <* validateMinValue val
+    where
+        validateMaxValue val' = val' <$ failureIf (val' > maxValue) (FieldError "value" ValueToHigh)
+        validateMinValue val' = val' <$ failureIf (val' < minValue) (FieldError "value" ValueToLow)
+
+validateForm :: Form -> Validation (NonEmpty FieldError) Form
+validateForm Form {..} = Form formId <$> validateName formName <*> validateValue formValue
 
 pnl :: ScottyT App ()
 pnl = do
