@@ -42,19 +42,31 @@ form {
     }
 }
 
+a.delete {
+    float: right;
+}
+a.delete::before {
+    content: '🗑';
+    margin-right: .25em;
+}
+
 #transactions {
     & thead {
         & th:nth-child(1) {
-            width: 4em;
+            width: 2em;
         }
         & th:nth-child(3) {
             width: 8em;
             text-align: right;
         }
+        & th:nth-child(4) {
+            width: 4em;
+        }
     }
 
     & tbody {
-        & td:nth-child(3) {
+        & td:nth-child(3),
+        & td:nth-child(4) {
             text-align: right;
         }
     }
