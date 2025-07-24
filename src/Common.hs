@@ -4,6 +4,7 @@
 module Common
     ( AppEnv(..)
     , App(..)
+    , Handler
     , module Relude
     , module Config
     , module Database.PostgreSQL.Simple
@@ -25,12 +26,16 @@ import Data.Pool
 import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, MonadLogger)
 import Web.ClientSession (Key)
+import Web.Scotty.Trans (ActionT)
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
     , connPool :: Pool Connection
     , sessionKey :: Key
+    , cssChecksum :: ByteString
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
     deriving (Applicative, Functor, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO, MonadLogger)
+
+type Handler a = ActionT App a

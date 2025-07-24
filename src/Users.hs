@@ -2,7 +2,7 @@ module Users ( users ) where
 
 import Common hiding (pass)
 import Types
-import Homepage (layout)
+import Homepage (layoutM)
 
 import qualified Text.Email.Validate as EmailV
 import Text.Email.Validate (EmailAddress)
@@ -95,6 +95,7 @@ users = do
     Scotty.get "/add-user" $ userForm def Nothing
     Scotty.post "/add-user" addUserHandler
     Scotty.get "/user/:id" $ do
+        layout <- layoutM
         Scotty.html . renderHtml $ layout (h1 "User added. Congrats!!!!")
 
 listOfUsers :: ActionT App ()
@@ -102,47 +103,47 @@ listOfUsers = do
     pool <- lift $ asks connPool
     allUsers <- liftIO $ withResource pool $ \conn -> do
         query_ @User conn stmt
-    Scotty.html . renderHtml $ markup allUsers
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        h1 "Users"
+        a ! href "/add-user" $ "Add new user"
+        table $ do
+            caption "Total users: 4"
+            thead $ tr $ do
+                th ! scope "col" $ "#"
+                th ! scope "col" $ "Email"
+            tbody $ do
+                forM_ allUsers toRow
+        
     where
         toRow :: User -> Html
         toRow User{..} = tr $ do
             th ! scope "col" $ text (showt userId)
             td $ text (un email)
-        markup :: [User] -> Html
-        markup us = layout $ do
-            h1 "Users"
-            a ! href "/add-user" $ "Add new user"
-            table $ do
-                caption "Total users: 4"
-                thead $ tr $ do
-                    th ! scope "col" $ "#"
-                    th ! scope "col" $ "Email"
-                tbody $ do
-                    forM_ us toRow
         stmt = [sql|
             SELECT id, email, locked_at, failed_login_attempts FROM users;
         |]
 
 userForm :: Form -> Maybe (NonEmpty FormValidationError) -> ActionT App ()
-userForm Form{..} errors = Scotty.html . renderHtml $ markup
-    where
-        markup = layout $ do
-            a ! href "/users" $ "Back"
-            h1 "Add user"
-            form ! method "POST" $ do
-                whenJust formUserId $ \(UserId uid) -> input ! name "id" ! type_ "hidden" ! value (toValue uid)
-                label $ do
-                    "Email"
-                    input ! required "required" ! name "email" ! type_ "email" ! value (toValue $ decodeUtf8 @Text formEmail)
-                    whenJust errors $ \errs -> renderEmailErrors errs
-                label $ do
-                    "Password"
-                    input ! required "required" ! name "password" ! type_ "password" ! value (toValue formPassword)
-                    whenJust errors $ \errs -> renderPasswordErrors errs
-                label $ do
-                    "Confirm password"
-                    input ! required "required" ! name "password2" ! type_ "password" ! value (toValue formPassword2)
-                button ! type_ "submit" $ "Save"
+userForm Form{..} errors = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        a ! href "/users" $ "Back"
+        h1 "Add user"
+        form ! method "POST" $ do
+            whenJust formUserId $ \(UserId uid) -> input ! name "id" ! type_ "hidden" ! value (toValue uid)
+            label $ do
+                "Email"
+                input ! required "required" ! name "email" ! type_ "email" ! value (toValue $ decodeUtf8 @Text formEmail)
+                whenJust errors $ \errs -> renderEmailErrors errs
+            label $ do
+                "Password"
+                input ! required "required" ! name "password" ! type_ "password" ! value (toValue formPassword)
+                whenJust errors $ \errs -> renderPasswordErrors errs
+            label $ do
+                "Confirm password"
+                input ! required "required" ! name "password2" ! type_ "password" ! value (toValue formPassword2)
+            button ! type_ "submit" $ "Save"
 
 renderEmailErrors :: NonEmpty FormValidationError -> Html
 renderEmailErrors errs = ul $ forM_ errs render

@@ -7,7 +7,7 @@ module Session
 
 import Common
 import Types
-import Homepage (layout)
+import Homepage (layoutM)
 
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT, ActionT)
@@ -57,15 +57,19 @@ auth :: ScottyT App ()
 auth = do
     Scotty.get "/login" $ loginForm def
     Scotty.post "/login" login
-    Scotty.get "/login-successed" $ Scotty.html . renderHtml . layout $ h1 "Zalogowano"
-    Scotty.get "/login-failed" $ Scotty.html . renderHtml . layout $ do
-        h1 "Logowanie nieudane"
-        a ! href "/login" $ "Spróbuj ponownie"
+    Scotty.get "/login-successed" $ do
+        layout <- layoutM
+        Scotty.html . renderHtml $ layout (h1 "Zalogowano")
+    Scotty.get "/login-failed" $ do
+        layout <- layoutM
+        Scotty.html . renderHtml $ layout $ do
+            h1 "Logowanie nieudane"
+            a ! href "/login" $ "Spróbuj ponownie"
 
 loginForm :: Form -> ActionT App ()
-loginForm Form{..} = Scotty.html . renderHtml $ markup
-    where
-        markup = layout $ do
+loginForm Form{..} = do
+        layout <- layoutM
+        Scotty.html . renderHtml $ layout $ do
             h1 "Login"
             form ! method "POST" $ do
                 label $ do

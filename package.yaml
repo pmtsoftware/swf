@@ -65,6 +65,8 @@ library:
   - clientsession
   - cereal
   - cereal-text
+  - cryptohash-sha1
+  - base16-bytestring
 
 executables:
   swf-exe:
