@@ -25,6 +25,7 @@ import qualified Data.List.NonEmpty as NE
 import Session (ensureSession)
 import Validation
 import Network.HTTP.Types (ok200)
+import Data.Time (Year, MonthOfYear, getCurrentTime, UTCTime (utctDay, UTCTime), toGregorian, fromGregorian)
 
 newtype TransactionId = TransactionId Int64
     deriving (Show, Eq, Generic)
@@ -46,6 +47,44 @@ data Transaction = Transaction
     deriving (Show, Generic)
 instance FromRow Transaction where
     fromRow = Transaction <$> field <*> field <*> field
+
+newtype Period = Period (Year, MonthOfYear)
+    deriving (Eq, Show)
+
+renderPeriod :: Period -> Text
+renderPeriod (Period (y, m)) = renderMonth m <> ", " <> showt y
+    where
+        renderMonth :: MonthOfYear -> Text
+        renderMonth 1 = "Styczeń"
+        renderMonth 2 = "Luty"
+        renderMonth 3 = "Marzec"
+        renderMonth 4 = "Kwiecień"
+        renderMonth 5 = "Maj"
+        renderMonth 6 = "Czerwiec"
+        renderMonth 7 = "Lipiec"
+        renderMonth 8 = "Sierpień"
+        renderMonth 9 = "Wrzesień"
+        renderMonth 10 = "Październik"
+        renderMonth 11 = "Listopad"
+        renderMonth 12 = "Grudzień"
+        renderMonth _ = "Unknown"
+
+nextPeriod :: Period -> Period
+nextPeriod (Period (y, m))
+    | m < 12    = Period (y, m + 1)
+    | otherwise = Period (y + 1, 1)
+
+currentPeriod :: IO Period
+currentPeriod = do
+    (y, m, _) <- toGregorian . utctDay <$> getCurrentTime
+    return $ Period (y, m)
+
+periodRange :: Period -> (UTCTime, UTCTime)
+periodRange period@(Period (y, m)) = (pstart ,pend)
+    where
+        Period (y', m') = nextPeriod period
+        pstart = UTCTime (fromGregorian y m 1) 0
+        pend = UTCTime (fromGregorian y' m' 1) 0
 
 data Form = Form
     { formId :: !(Maybe TransactionId)
@@ -136,12 +175,13 @@ printScientificValue = toText . Scientific.formatScientific Scientific.Generic (
 transactions :: ActionT App ()
 transactions = do
     pool <- lift $ asks connPool
+    period <- liftIO currentPeriod
     allTransactions <- liftIO $ withResource pool $ \conn -> do
-        query_ @Transaction conn stmt
+        query conn stmt $ periodRange period
     layout <- layoutM
     let total = sum $ transactionValue <$> allTransactions
     Scotty.html . renderHtml $ layout $ do
-        h1 "Lipiec, 2025"
+        h1 $ text $ renderPeriod period
         a ! href "/pnl/add-transaction" $ "Dodaj"
         table ! id "transactions" $ do
             thead $ tr $ do
@@ -165,7 +205,7 @@ transactions = do
             td $ text (printScientificValue transactionValue)
             td $ editLink transactionId
         stmt = [sql|
-            SELECT id, name, value FROM transactions ORDER BY id DESC;
+            SELECT id, name, value FROM transactions WHERE created_at >= ? AND created_at < ? ORDER BY id DESC;
         |]
 
 addTransactionHandler :: ActionT App ()
