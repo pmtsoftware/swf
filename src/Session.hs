@@ -65,6 +65,9 @@ auth = do
         Scotty.html . renderHtml $ layout $ do
             h1 "Logowanie nieudane"
             a ! href "/login" $ "Spróbuj ponownie"
+    Scotty.get "/account-locked" $ do
+        layout <- layoutM
+        Scotty.html . renderHtml $ layout $ h1 "Account locked due to invalid login attempts."
 
 loginForm :: Form -> ActionT App ()
 loginForm Form{..} = do
@@ -80,6 +83,9 @@ loginForm Form{..} = do
                     input ! required "required" ! name "password" ! type_ "password" ! value (toValue formPassword)
                 button ! type_ "submit" $ "Login"
 
+maxLoginAttempts :: Int
+maxLoginAttempts = 5
+
 login :: ActionT App ()
 login = do
     Form{..} <- Form
@@ -90,24 +96,47 @@ login = do
     check result (mkPassword formPassword) formEmail
     Scotty.redirect "/login-failed"
     where
-        check :: [(UserId, PasswordHash Argon2)] -> Password -> Text -> ActionT App ()
-        check [(uid, pHash)] userPass userEmail = case checkPassword userPass pHash of
-            PasswordCheckSuccess -> do
-                k <- lift $ asks sessionKey
-                ct <- liftIO getCurrentTime
-                let session = MkSessionData userEmail uid ct
-                    sessionBS = Bin.encode session
-                encrypted <- liftIO $ Sess.encryptIO k  sessionBS
-                Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
-                Scotty.redirect "/login-successed"
-            PasswordCheckFail -> do
-                lift . logErrorN $ "Invalid password"
-                Scotty.redirect "/login-failed"
+        check :: [(UserId, PasswordHash Argon2, Int)] -> Password -> Text -> ActionT App ()
+        check [(uid, pHash, fla)] userPass userEmail
+            | fla > maxLoginAttempts = do
+                Scotty.raw mempty
+                Scotty.redirect "/account-locked"
+            | otherwise = case checkPassword userPass pHash of
+                PasswordCheckSuccess -> do
+                    k <- lift $ asks sessionKey
+                    ct <- liftIO getCurrentTime
+                    let session = MkSessionData userEmail uid ct
+                        sessionBS = Bin.encode session
+                    encrypted <- liftIO $ Sess.encryptIO k  sessionBS
+                    Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
+                    Scotty.redirect "/login-successed"
+                PasswordCheckFail -> do
+                    lift . logErrorN $ "Invalid password"
+                    [Only fla'] <- queryDb @(Only Text) @(Only Int) updateFLA $ Only userEmail
+                    when (fla' > maxLoginAttempts) $ do
+                        _ <- executeDb setLockedAt $ Only userEmail
+                        Scotty.raw mempty
+                        Scotty.redirect "/account-locked"
+                    Scotty.redirect "/login-failed"
         check _ _ _ = do
             lift . logErrorN $ "User not found"
             Scotty.redirect "/login-failed"
+
         stmt = [sql|
-            SELECT id, password FROM users WHERE email = ?
+            SELECT id, password, failed_login_attempts FROM users WHERE email = ?
+        |]
+        updateFLA = [sql|
+            UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE email = ? RETURNING failed_login_attempts;
+        |]
+        setLockedAt = [sql|
+            UPDATE users SET locket_at = transaction_timestamp() WHERE email = ?;
+        |]
+
+incFailedLoginAttempts :: Connection -> Email -> IO Int64
+incFailedLoginAttempts conn email = execute conn undefined $ Only email
+    where
+        stmt = [sql|
+            UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE email = ? RETURNING failed_login_attempts;
         |]
 
 ensureSession :: ActionT App ()
