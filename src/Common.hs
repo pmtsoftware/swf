@@ -12,6 +12,8 @@ module Common
     , module Database.PostgreSQL.Simple.ToField
     , module Database.PostgreSQL.Simple.SqlQQ
     , module Data.Pool
+    , queryDb
+    , executeDb
     ) where
 
 import Relude hiding (div, head, id, span, map)
@@ -39,3 +41,13 @@ newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
     deriving (Applicative, Functor, Monad, MonadIO, MonadReader AppEnv, MonadUnliftIO, MonadLogger)
 
 type Handler a = ActionT App a
+
+queryDb :: (ToRow q, FromRow r) => Query -> q -> Handler [r]
+queryDb stmt args = do
+    connPool <- lift $ asks connPool
+    liftIO $ withResource connPool $ \conn -> query conn stmt args
+
+executeDb :: (ToRow q) => Query -> q -> Handler Int64
+executeDb stmt args = do
+    connPool <- lift $ asks connPool
+    liftIO $ withResource connPool $ \conn -> execute conn stmt args
