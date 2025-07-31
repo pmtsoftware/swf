@@ -42,6 +42,11 @@ data SessionData = MkSessionData
     deriving (Show, Eq, Generic)
 instance Bin.Serialize SessionData
 
+data Error
+    = EmailNotFound
+    | AccountLocked
+    | InvalidPassword
+
 data Form = Form
     { formEmail :: !Text
     , formPassword :: !Text
@@ -55,7 +60,7 @@ def = Form
 
 auth :: ScottyT App ()
 auth = do
-    Scotty.get "/login" $ loginForm def
+    Scotty.get "/login" $ loginForm def Nothing
     Scotty.post "/login" login
     Scotty.get "/login-successed" $ do
         layout <- layoutM
@@ -69,8 +74,8 @@ auth = do
         layout <- layoutM
         Scotty.html . renderHtml $ layout $ h1 "Account locked due to invalid login attempts."
 
-loginForm :: Form -> ActionT App ()
-loginForm Form{..} = do
+loginForm :: Form -> Maybe Error -> ActionT App ()
+loginForm Form{..} err = do
         layout <- layoutM
         Scotty.html . renderHtml $ layout $ do
             h1 "Login"
@@ -78,10 +83,21 @@ loginForm Form{..} = do
                 label $ do
                     "Email"
                     input ! required "required" ! name "email" ! type_ "email" ! value (toValue formEmail)
+                    whenJust err renderEmailErr
                 label $ do
                     "Password"
                     input ! required "required" ! name "password" ! type_ "password" ! value (toValue formPassword)
+                    whenJust err renderPassErr
                 button ! type_ "submit" $ "Login"
+    where
+        renderEmailErr :: Error -> Html
+        renderEmailErr EmailNotFound = ul $ li "Email not found"
+        renderEmailErr AccountLocked = ul $ li "Account locked due to failed login attempts"
+        renderEmailErr _ = mempty
+
+        renderPassErr :: Error -> Html
+        renderPassErr InvalidPassword = ul $ li "Invalid password"
+        renderPassErr _ = mempty
 
 maxLoginAttempts :: Int
 maxLoginAttempts = 5
@@ -91,16 +107,14 @@ login = do
     Form{..} <- Form
         <$> Scotty.formParam "email"
         <*> Scotty.formParam "password"
-    AppEnv{..} <- lift ask
-    result <- liftIO $ withResource connPool $ \conn -> query conn stmt (Only formEmail)
-    check result (mkPassword formPassword) formEmail
-    Scotty.redirect "/login-failed"
+    result <- queryDb stmt (Only formEmail)
+    case result of
+        [row] -> check row (mkPassword formPassword) formEmail
+        _     -> loginForm (Form formEmail "") $ Just EmailNotFound
     where
-        check :: [(UserId, PasswordHash Argon2, Int)] -> Password -> Text -> ActionT App ()
-        check [(uid, pHash, fla)] userPass userEmail
-            | fla > maxLoginAttempts = do
-                Scotty.raw mempty
-                Scotty.redirect "/account-locked"
+        check :: (UserId, PasswordHash Argon2, Int) -> Password -> Text -> ActionT App ()
+        check (uid, pHash, fla) userPass userEmail
+            | fla > maxLoginAttempts = loginForm (Form userEmail "") $ Just AccountLocked
             | otherwise = case checkPassword userPass pHash of
                 PasswordCheckSuccess -> do
                     k <- lift $ asks sessionKey
@@ -115,13 +129,8 @@ login = do
                     [Only fla'] <- queryDb @(Only Text) @(Only Int) updateFLA $ Only userEmail
                     when (fla' > maxLoginAttempts) $ do
                         _ <- executeDb setLockedAt $ Only userEmail
-                        Scotty.raw mempty
                         Scotty.redirect "/account-locked"
-                    Scotty.redirect "/login-failed"
-        check _ _ _ = do
-            lift . logErrorN $ "User not found"
-            Scotty.redirect "/login-failed"
-
+                    loginForm (Form userEmail "") $ Just InvalidPassword
         stmt = [sql|
             SELECT id, password, failed_login_attempts FROM users WHERE email = ?
         |]
@@ -129,14 +138,7 @@ login = do
             UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE email = ? RETURNING failed_login_attempts;
         |]
         setLockedAt = [sql|
-            UPDATE users SET locket_at = transaction_timestamp() WHERE email = ?;
-        |]
-
-incFailedLoginAttempts :: Connection -> Email -> IO Int64
-incFailedLoginAttempts conn email = execute conn undefined $ Only email
-    where
-        stmt = [sql|
-            UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE email = ? RETURNING failed_login_attempts;
+            UPDATE users SET locked_at = transaction_timestamp() WHERE email = ?;
         |]
 
 ensureSession :: ActionT App ()
