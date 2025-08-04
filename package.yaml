@@ -67,6 +67,10 @@ library:
   - cereal-text
   - cryptohash-sha1
   - base16-bytestring
+  - wreq
+  - lens
+  - aeson
+  - http-client
 
 executables:
   swf-exe:
