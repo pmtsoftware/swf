@@ -71,6 +71,7 @@ library:
   - lens
   - aeson
   - http-client
+  - wai-extra
 
 executables:
   swf-exe:

@@ -21,14 +21,22 @@ import Web.Scotty.Trans (ScottyT)
 import Text.Blaze.Html5 hiding (header, object)
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
+import Database.PostgreSQL.Simple.FromRow (fromRow, field)
+import Network.Wai.Parse (FileInfo (..))
 
 service :: ScottyT App ()
 service = do
     Scotty.get "/marker/start" importForm
-    Scotty.post "/marker/start" undefined
-    Scotty.get "/marker/job/:id/status" undefined
-    Scotty.get "/marker/job/:id/result" undefined
-    Scotty.post "/marker/job/:id/refine" undefined
+    Scotty.post "/marker/start" $ do
+        files <- Scotty.files
+        case files of
+            [file] -> startImport file
+            _      -> Scotty.redirect "/marker/error"
+
+    Scotty.get "/marker/job/:id/status" statusPage
+    Scotty.get "/marker/job/:id/result" statusPage
+    Scotty.post "/marker/job/:id/refine" statusPage
+    Scotty.get "/marker/error" errorPage
 
 importForm :: Handler ()
 importForm = do
@@ -40,6 +48,27 @@ importForm = do
                 "File"
                 input ! required "required" ! name "file" ! type_ "file" ! accept ".pdf"
             button ! type_ "submit" $ "Start"
+
+startImport :: Scotty.File -> Handler ()
+startImport (_, FileInfo{..}) = do
+    liftIO $ writeFileBS "testdoc.pdf" . fromLazy $ fileContent
+    Scotty.redirect "/marker/job/1/status"
+    where
+        stmt = [sql|
+            INSERT INTO marker_requests (request_id, request_check_url, status, created_at) VALUES (?, ?, ?, transaction_timestamp()) RETURNING id
+        |]
+
+statusPage :: Handler ()
+statusPage = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        h1 "File uploaded"
+
+errorPage :: Handler ()
+errorPage = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        h1 "Error occured!"
 
 type Converter = FilePath -> IO (Either () JobResult)
 
@@ -131,6 +160,9 @@ data Job = Job
     , jobStatus :: !Text
     , jobCheckpointId :: !(Maybe Text)
     } deriving (Generic, Show, Eq)
+
+instance FromRow Job where
+    fromRow = Job <$> field <*> field <*> field <*> field <*> field
 
 apiKey :: ByteString
 apiKey = "Gxj_Gk8AKREH-oBHi3jvRP4P_yE6nzDxcgqZ-0uUqNY"
