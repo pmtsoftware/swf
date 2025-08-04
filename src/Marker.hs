@@ -2,10 +2,12 @@ module Marker
     ( convert
     , convertAndSave
     , health
+    , service
     )
 where
 
-import Relude
+import Common
+import Homepage (layoutM)
 
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (Options)
@@ -14,6 +16,30 @@ import Network.Wreq
 import Control.Concurrent (threadDelay)
 import Control.Exception (try)
 import Network.HTTP.Client (HttpException(..))
+import qualified Web.Scotty.Trans as Scotty
+import Web.Scotty.Trans (ScottyT)
+import Text.Blaze.Html5 hiding (header, object)
+import Text.Blaze.Html5.Attributes hiding (title, form, label)
+import Text.Blaze.Html.Renderer.Text
+
+service :: ScottyT App ()
+service = do
+    Scotty.get "/marker/start" importForm
+    Scotty.post "/marker/start" undefined
+    Scotty.get "/marker/job/:id/status" undefined
+    Scotty.get "/marker/job/:id/result" undefined
+    Scotty.post "/marker/job/:id/refine" undefined
+
+importForm :: Handler ()
+importForm = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        h1 "Import pdf"
+        form ! method "POST" ! enctype "multipart/form-data" $ do
+            label $ do
+                "File"
+                input ! required "required" ! name "file" ! type_ "file" ! accept ".pdf"
+            button ! type_ "submit" $ "Start"
 
 type Converter = FilePath -> IO (Either () JobResult)
 
