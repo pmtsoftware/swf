@@ -35,6 +35,7 @@ data AppEnv = AppEnv
     , connPool :: Pool Connection
     , sessionKey :: Key
     , cssChecksum :: ByteString
+    , markerRequest :: MVar Int64
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }

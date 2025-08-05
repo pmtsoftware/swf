@@ -1,8 +1,12 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
+
 module Marker
     ( convert
     , convertAndSave
     , health
     , service
+    , pollMarkerJobResult
     )
 where
 
@@ -23,6 +27,7 @@ import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
+import TextShow
 
 service :: ScottyT App ()
 service = do
@@ -34,7 +39,7 @@ service = do
             _      -> Scotty.redirect "/marker/error"
 
     Scotty.get "/marker/job/:id/status" statusPage
-    Scotty.get "/marker/job/:id/result" statusPage
+    Scotty.get "/marker/job/:id/result" resultPage
     Scotty.post "/marker/job/:id/refine" statusPage
     Scotty.get "/marker/error" errorPage
 
@@ -51,18 +56,43 @@ importForm = do
 
 startImport :: Scotty.File -> Handler ()
 startImport (_, FileInfo{..}) = do
-    liftIO $ writeFileBS "testdoc.pdf" . fromLazy $ fileContent
-    Scotty.redirect "/marker/job/1/status"
+    liftIO $ writeFileBS "urs.pdf" . fromLazy $ fileContent
+    orderResult <- liftIO $ orderJob "urs.pdf"
+    case orderResult of
+        Nothing -> Scotty.redirect "/marker/error"
+        Just OrderResult{..} -> do
+            result <- queryDb stmt (requestId, requestCheckUrl, "" :: Text)
+            case result of
+                [Only jid] -> onSuccess jid
+                _     -> error ""
+            return ()
     where
         stmt = [sql|
             INSERT INTO marker_requests (request_id, request_check_url, status, created_at) VALUES (?, ?, ?, transaction_timestamp()) RETURNING id
         |]
+        onSuccess :: Int64 -> Handler ()
+        onSuccess jid = do
+            box <- lift $ asks markerRequest
+            liftIO $ putMVar box jid
+            Scotty.redirect $ "/marker/job/" <> showtl jid <> "/status"
 
 statusPage :: Handler ()
 statusPage = do
     layout <- layoutM
     Scotty.html . renderHtml $ layout $ do
         h1 "File uploaded"
+
+resultPage :: Handler ()
+resultPage = do
+    paramJobId <- Scotty.captureParam @Int64 "id"
+    layout <- layoutM
+    result <- queryDb [sql|
+        SELECT html FROM marker_blocks WHERE request_id = ?;
+    |] (Only paramJobId)
+    Scotty.html . renderHtml $ layout $ getContent result
+    where
+        getContent :: [Only Text] -> Html
+        getContent blocks =  mconcat $ preEscapedToHtml . fromOnly <$> blocks
 
 errorPage :: Handler ()
 errorPage = do
@@ -138,7 +168,10 @@ data Block = Block
     { blockId :: Text
     , html :: Text
     , blockType :: Text
-    } deriving (Generic, Show, Eq)
+    } deriving (Generic, Show, Eq, ToRow)
+
+instance FromRow Block where
+    fromRow = Block <$> field <*> field <*> field
 
 instance FromJSON Block where
     parseJSON = withObject "HealthResponse" $ \v -> Block
@@ -190,8 +223,9 @@ convert fp = do
     where
         run :: OrderResult -> IO (Either Text JobResult)
         run OrderResult{..} = poll 60 (getJobStatus requestCheckUrl) isProcFinished
-        isProcFinished :: JobResult -> Bool
-        isProcFinished JobResult{..} = markerStatus == "complete"
+
+isProcFinished :: JobResult -> Bool
+isProcFinished JobResult{..} = markerStatus == "complete"
 
 convertAndSave :: FilePath -> IO ()
 convertAndSave fp = do
@@ -216,7 +250,7 @@ poll attempts ask' isFinished
         handleException = print
 
 wait :: IO ()
-wait = threadDelay 2000000
+wait = threadDelay 1000000
 
 orderJob :: FilePath -> IO (Maybe OrderResult)
 orderJob fp = do
@@ -229,15 +263,6 @@ orderJob fp = do
         url = T.unpack $ baseUrl <> "api/v1/marker"
     r <- asJSON @IO @OrderResult =<< postWith opts url payload
     let result@OrderResult{..} = r ^. responseBody
-    -- putStrLn "Marker API call result"
-    -- putStr "Success: "
-    -- print success
-    -- putStr "Request id: "
-    -- print requestId
-    -- putStr "Request check url: "
-    -- print requestCheckUrl
-    -- putStrLn  "Checkpoint id: "
-    -- print checkpointId
     if success then return (Just result) else return Nothing
 
 getJobStatus :: Text -> IO JobResult
@@ -251,3 +276,38 @@ opts :: Options
 opts = defaults & appKeyH
     where
         appKeyH = header "X-Api-Key" .~ [apiKey]
+
+pollMarkerJobResult :: AppEnv -> IO ()
+pollMarkerJobResult AppEnv{..} = forever $ do
+    jobId <- takeMVar markerRequest
+    threadDelay 1000000
+    Job{..} <- getDbRow connPool jobId
+    putStrLn " Start polling"
+    result <- poll 60 (getJobStatus jobRequestCheckUrl) isProcFinished
+    case result of
+        Right JobResult{..} -> when (markerStatus == "complete") $ do
+            putStrLn "Polling finshed successfully"
+            -- TODO: insert all chunks
+            storeChunks connPool jobId $ maybe [] blocks chunks
+            return ()
+        Left _ -> putStrLn "Polling failed"
+    return ()
+    where
+        getDbRow :: Pool Connection -> Int64 -> IO Job
+        getDbRow pool jobId = withResource pool $ \conn -> do
+            [entity] <- query conn stmt $ Only jobId
+            return entity
+        stmt = [sql|
+                SELECT id, request_id, request_check_url, status, checkpoint_id FROM marker_requests WHERE id = ?;
+            |]
+
+storeChunks :: Pool Connection -> Int64 -> [Block] -> IO ()
+storeChunks pool jobId blocks = do
+    withResource pool $ \conn -> do
+        _ <- executeMany conn [sql|
+            INSERT INTO marker_blocks (request_id, blockid, html, block_type) VALUES (?, ?, ?, ?)
+        |] $ toRow jobId <$> blocks
+        return ()
+    where
+        toRow :: Int64 -> Block -> (Int64, Text, Text, Text)
+        toRow jid Block{..} = (jid, blockId, html, blockType)
