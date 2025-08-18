@@ -39,6 +39,7 @@ service = do
             _      -> Scotty.redirect "/marker/error"
 
     Scotty.get "/marker/job/:id/status" statusPage
+    Scotty.get "/marker/job/:id/is-complete" isCompleteHandler
     Scotty.get "/marker/job/:id/result" resultPage
     Scotty.post "/marker/job/:id/refine" statusPage
     Scotty.get "/marker/error" errorPage
@@ -68,7 +69,7 @@ startImport (_, FileInfo{..}) = do
             return ()
     where
         stmt = [sql|
-            INSERT INTO marker_requests (request_id, request_check_url, status, created_at) VALUES (?, ?, ?, transaction_timestamp()) RETURNING id
+            INSERT INTO marker_requests (request_id, request_check_url, status, created_at) VALUES (?, ?, ?, transaction_timestamp()) RETURNING id;
         |]
         onSuccess :: Int64 -> Handler ()
         onSuccess jid = do
@@ -78,9 +79,32 @@ startImport (_, FileInfo{..}) = do
 
 statusPage :: Handler ()
 statusPage = do
+    paramJobId <- Scotty.captureParam @Int64 "id"
     layout <- layoutM
     Scotty.html . renderHtml $ layout $ do
-        h1 "File uploaded"
+        h1 "Processing"
+        div ! hx_get paramJobId ! hx_trigger ! hx_swap $ do
+            p "Please wait..."
+    where
+        hx_get jobId = customAttribute "hx-get" $ "/marker/job/" <> toValue (showtl jobId) <> "/is-complete"
+        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
+        hx_swap = customAttribute "hx-swap" "outerHTML"
+
+isCompleteHandler :: Handler ()
+isCompleteHandler = do
+    paramJobId <- Scotty.captureParam @Int64 "id"
+    [Only status] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT status FROM marker_requests WHERE id = ?; |] $ Only paramJobId
+    case status of
+        "complete" -> Scotty.html. renderHtml $ do
+            p "Processing completed! "
+            a ! href ("/marker/job/" <> toValue (showtl paramJobId) <> "/result") $ "Open document"
+        _ -> Scotty.html . renderHtml $ do
+            div ! hx_get paramJobId ! hx_trigger ! hx_swap $ do
+                p "Please wait..."
+    where
+        hx_get jobId = customAttribute "hx-get" $ "/marker/job/" <> toValue (showtl jobId) <> "/is-complete"
+        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
+        hx_swap = customAttribute "hx-swap" "outerHTML"
 
 resultPage :: Handler ()
 resultPage = do
@@ -287,12 +311,17 @@ pollMarkerJobResult AppEnv{..} = forever $ do
     case result of
         Right JobResult{..} -> when (markerStatus == "complete") $ do
             putStrLn "Polling finshed successfully"
+            saveCheckpointId connPool jobId $ fromMaybe "" checkpointId
             -- TODO: insert all chunks
             storeChunks connPool jobId $ maybe [] blocks chunks
             return ()
         Left _ -> putStrLn "Polling failed"
     return ()
     where
+        saveCheckpointId :: Pool Connection -> Int64 -> Text -> IO ()
+        saveCheckpointId pool jobId checkpointId = withResource pool $ \conn -> do
+            _ <- execute conn [sql| UPDATE marker_requests SET checkpoint_id = ?, status = 'complete' WHERE id = ?; |]  (checkpointId, jobId)
+            return ()
         getDbRow :: Pool Connection -> Int64 -> IO Job
         getDbRow pool jobId = withResource pool $ \conn -> do
             [entity] <- query conn stmt $ Only jobId
@@ -305,7 +334,7 @@ storeChunks :: Pool Connection -> Int64 -> [Block] -> IO ()
 storeChunks pool jobId blocks = do
     withResource pool $ \conn -> do
         _ <- executeMany conn [sql|
-            INSERT INTO marker_blocks (request_id, blockid, html, block_type) VALUES (?, ?, ?, ?)
+            INSERT INTO marker_blocks (request_id, blockid, html, block_type) VALUES (?, ?, ?, ?);
         |] $ toRow jobId <$> blocks
         return ()
     where
