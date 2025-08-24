@@ -113,7 +113,20 @@ resultPage = do
     result <- queryDb [sql|
         SELECT html FROM marker_blocks WHERE request_id = ?;
     |] (Only paramJobId)
-    Scotty.html . renderHtml $ layout $ getContent result
+    Scotty.html . renderHtml $ layout $ do
+        div ! class_ "wrapper" $ do
+            div  $ do
+                form $ do
+                    label $ do
+                        "Prompt"
+                        textarea $ text ""
+                    button ! type_ "submit" $ "Post"
+            div ! id "document" $ do
+                article $ h1 "Lorem ipsum"
+                article "Lorem ipsum"
+            div $ do
+                code "Welcome 🙋"
+                getContent result
     where
         getContent :: [Only Text] -> Html
         getContent blocks =  mconcat $ preEscapedToHtml . fromOnly <$> blocks
