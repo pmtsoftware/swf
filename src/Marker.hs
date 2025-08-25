@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant id" #-}
 
 module Marker
     ( convert
@@ -41,7 +43,7 @@ service = do
     Scotty.get "/marker/job/:id/status" statusPage
     Scotty.get "/marker/job/:id/is-complete" isCompleteHandler
     Scotty.get "/marker/job/:id/result" resultPage
-    Scotty.post "/marker/job/:id/refine" statusPage
+    Scotty.post "/marker/refine" statusPage
     Scotty.get "/marker/error" errorPage
 
 importForm :: Handler ()
@@ -77,6 +79,19 @@ startImport (_, FileInfo{..}) = do
             liftIO $ putMVar box jid
             Scotty.redirect $ "/marker/job/" <> showtl jid <> "/status"
 
+promptHandler :: Handler ()
+promptHandler = do
+    checkpointId <- Scotty.formParam @Text "checkpoint_id"
+    prompt <- Scotty.formParam @Text "prompt"
+    jobId <- Scotty.formParam @Int64 "id"
+    r <- liftIO $ runPrompt checkpointId prompt
+    case r of
+        Nothing -> Scotty.redirect "/marker/error"
+        Just OrderResult{..} -> do
+            _ <- executeDb [sql| UPDATE marker_requests SET request_check_url = ?, status = '' WHERE id = ?; |] (requestCheckUrl, jobId)
+            box <- lift $ asks markerRequest
+            liftIO $ putMVar box jobId
+
 statusPage :: Handler ()
 statusPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
@@ -110,26 +125,32 @@ resultPage :: Handler ()
 resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
     layout <- layoutM
+    [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     result <- queryDb [sql|
         SELECT html FROM marker_blocks WHERE request_id = ?;
     |] (Only paramJobId)
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
-            div  $ do
-                form $ do
-                    label $ do
-                        "Prompt"
-                        textarea $ text ""
-                    button ! type_ "submit" $ "Post"
+            div ! id "prompting"  $ promptForm paramJobId checkpointId
             div ! id "document" $ do
                 article $ h1 "Lorem ipsum"
                 article "Lorem ipsum"
             div $ do
-                code "Welcome 🙋"
+                code ! id "logs" $ do
+                    p "Welcome 🙋"
                 getContent result
     where
         getContent :: [Only Text] -> Html
         getContent blocks =  mconcat $ preEscapedToHtml . fromOnly <$> blocks
+
+promptForm :: Int64 -> Text -> Html
+promptForm jobId checkpointId = form ! method "POST" ! action "/marker/refine" $ do
+    input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
+    input ! type_ "hidden" ! name "id" ! value (toValue jobId)
+    label $ do
+        "Prompt"
+        textarea ! name "prompt" $ text ""
+    button ! type_ "submit" $ "Post"
 
 errorPage :: Handler ()
 errorPage = do
@@ -223,6 +244,17 @@ instance ToJSON Block where
             , "block_type" .= blockType
             ]
 
+data Prompt = Prompt
+    { promptCheckpointId :: Text
+    , prompt :: Text
+    } deriving (Generic, Show, Eq, ToRow)
+instance ToJSON Prompt where
+    toJSON (Prompt{..}) =
+        object
+            [ "checkpoint_id" .= promptCheckpointId
+            , "prompt" .= prompt
+            ]
+
 data Job = Job
     { jobId :: !Int64
     , jobRequestId :: !Text
@@ -302,6 +334,14 @@ orderJob fp = do
     let result@OrderResult{..} = r ^. responseBody
     if success then return (Just result) else return Nothing
 
+runPrompt :: Text -> Text -> IO (Maybe OrderResult)
+runPrompt checkpointId prompt = do
+    let payload = toJSON $ Prompt checkpointId prompt
+        url = T.unpack $ baseUrl <> "api/v1/marker/prompt"
+    r <- asJSON @IO @OrderResult =<< postWith opts url payload
+    let result@OrderResult{..} = r ^. responseBody
+    if success then return (Just result) else return Nothing
+
 getJobStatus :: Text -> IO JobResult
 getJobStatus url = do
     r <- asJSON @IO @JobResult =<< getWith opts (T.unpack url)
@@ -346,6 +386,8 @@ pollMarkerJobResult AppEnv{..} = forever $ do
 storeChunks :: Pool Connection -> Int64 -> [Block] -> IO ()
 storeChunks pool jobId blocks = do
     withResource pool $ \conn -> do
+        -- delete previous chunks
+        _ <- execute conn [sql| DELETE FROM marker_blocks WHERE request_id = ?; |] $ Only jobId
         _ <- executeMany conn [sql|
             INSERT INTO marker_blocks (request_id, blockid, html, block_type) VALUES (?, ?, ?, ?);
         |] $ toRow jobId <$> blocks
