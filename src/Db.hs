@@ -13,4 +13,5 @@ migrateDb conn = runMigrations conn defaultOptions
     , MigrationFile "users.sql" "./migrations/users.sql"
     , MigrationFile "email_unique.sql" "./migrations/email_unique.sql"
     , MigrationFile "marker.sql" "./migrations/marker.sql"
+    , MigrationFile "marker_page_no.sql" "./migrations/marker_page_no.sql"
     ]

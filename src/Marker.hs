@@ -9,6 +9,7 @@ module Marker
     , health
     , service
     , pollMarkerJobResult
+    , parsePageNo
     )
 where
 
@@ -18,18 +19,20 @@ import Homepage (layoutM)
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (Options)
 import qualified Data.Text as T
-import Network.Wreq
+import Network.Wreq hiding (header)
+import qualified Network.Wreq as Wreq
 import Control.Concurrent (threadDelay)
 import Control.Exception (try)
 import Network.HTTP.Client (HttpException(..))
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT)
-import Text.Blaze.Html5 hiding (header, object)
+import Text.Blaze.Html5 hiding (object)
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
-import TextShow
+import qualified Data.List.NonEmpty as NE
+import TextShow hiding (toString)
 
 service :: ScottyT App ()
 service = do
@@ -127,21 +130,28 @@ resultPage = do
     layout <- layoutM
     [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     result <- queryDb [sql|
-        SELECT html FROM marker_blocks WHERE request_id = ?;
+        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no;
     |] (Only paramJobId)
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
             div ! id "prompting"  $ promptForm paramJobId checkpointId
-            div ! id "document" $ do
-                article $ h1 "Lorem ipsum"
-                article "Lorem ipsum"
+            div ! id "document" $ getContent result
             div $ do
                 code ! id "logs" $ do
                     p "Welcome 🙋"
-                getContent result
     where
-        getContent :: [Only Text] -> Html
-        getContent blocks =  mconcat $ preEscapedToHtml . fromOnly <$> blocks
+        getContent :: [(Text, Int)] -> Html
+        getContent = renderPages . NE.groupWith snd
+
+renderPages :: [NonEmpty (Text, Int)] -> Html
+renderPages = mconcat . fmap renderPage
+
+renderPage :: NonEmpty (Text, Int) -> Html
+renderPage sections = article $ do
+    let pageNo = snd . NE.head $ sections
+    -- header $ small $ text ("Page " <> showt pageNo)
+    mapM_ preEscapedToHtml $ fmap fst sections
+    footer $ small $  text ("Page " <> showt pageNo)
 
 promptForm :: Int64 -> Text -> Html
 promptForm jobId checkpointId = form ! method "POST" ! action "/marker/refine" $ do
@@ -352,7 +362,7 @@ getJobStatus url = do
 opts :: Options
 opts = defaults & appKeyH
     where
-        appKeyH = header "X-Api-Key" .~ [apiKey]
+        appKeyH = Wreq.header "X-Api-Key" .~ [apiKey]
 
 pollMarkerJobResult :: AppEnv -> IO ()
 pollMarkerJobResult AppEnv{..} = forever $ do
@@ -389,9 +399,16 @@ storeChunks pool jobId blocks = do
         -- delete previous chunks
         _ <- execute conn [sql| DELETE FROM marker_blocks WHERE request_id = ?; |] $ Only jobId
         _ <- executeMany conn [sql|
-            INSERT INTO marker_blocks (request_id, blockid, html, block_type) VALUES (?, ?, ?, ?);
+            INSERT INTO marker_blocks (request_id, blockid, html, block_type, page_no) VALUES (?, ?, ?, ?, ?);
         |] $ toRow jobId <$> blocks
         return ()
     where
-        toRow :: Int64 -> Block -> (Int64, Text, Text, Text)
-        toRow jid Block{..} = (jid, blockId, html, blockType)
+        toRow :: Int64 -> Block -> (Int64, Text, Text, Text, Maybe Int)
+        toRow jid Block{..} = (jid, blockId, html, blockType, parsePageNo blockId)
+
+parsePageNo :: Text -> Maybe Int
+parsePageNo x = rightToMaybe . readEither . toString $ getPage chunks
+    where
+        chunks = T.split (=='/') x
+        getPage [_, _, page, _, _] = page
+        getPage _ = ""

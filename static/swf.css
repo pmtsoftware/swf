@@ -52,7 +52,7 @@ form {
         grid-row: 1 / 3;
         display: flex;
         flex-direction: column;
-        gap: 1em;
+        gap: 2em;
         /*max-height: calc(100vh - 100px);*/
         overflow: auto;
     }
@@ -63,14 +63,24 @@ form {
 }
 
 article {
-    /*padding: 2em;*/
+    padding: 2em;
+    box-sizing: border-box;
     background-color: #eee;
     color: #444444;
     width: 100%;
-    min-height: 64em;
 
     & h1, h2, h3, h4, h5, p {
         color: #444444;
+    }
+
+    tbody tr:nth-child(2n) {
+        background-color: #eee;
+    }
+
+    footer {
+        display: flex;
+        justify-content: right;
+        margin-top: 4em;
     }
 }
 
