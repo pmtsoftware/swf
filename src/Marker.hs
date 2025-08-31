@@ -46,7 +46,8 @@ service = do
     Scotty.get "/marker/job/:id/status" statusPage
     Scotty.get "/marker/job/:id/is-complete" isCompleteHandler
     Scotty.get "/marker/job/:id/result" resultPage
-    Scotty.post "/marker/refine" statusPage
+    Scotty.post "/marker/refine" promptHandler
+    Scotty.get "/marker/is-refined" isRefinedHandler
     Scotty.get "/marker/error" errorPage
 
 importForm :: Handler ()
@@ -86,7 +87,7 @@ promptHandler :: Handler ()
 promptHandler = do
     checkpointId <- Scotty.formParam @Text "checkpoint_id"
     prompt <- Scotty.formParam @Text "prompt"
-    jobId <- Scotty.formParam @Int64 "id"
+    jobId <- Scotty.formParam @Int64 "job_id"
     r <- liftIO $ runPrompt checkpointId prompt
     case r of
         Nothing -> Scotty.redirect "/marker/error"
@@ -94,6 +95,11 @@ promptHandler = do
             _ <- executeDb [sql| UPDATE marker_requests SET request_check_url = ?, status = '' WHERE id = ?; |] (requestCheckUrl, jobId)
             box <- lift $ asks markerRequest
             liftIO $ putMVar box jobId
+            Scotty.html . renderHtml $ do
+                renderPoll True True
+                p ! customAttribute "hx-swap-oob" "beforeend:#logs" $ "💡 Processing..."
+                -- TODO: form is inserted into form - need to fix it
+                promptForm True jobId checkpointId
 
 statusPage :: Handler ()
 statusPage = do
@@ -124,6 +130,21 @@ isCompleteHandler = do
         hx_trigger = customAttribute "hx-trigger" "load delay:1s"
         hx_swap = customAttribute "hx-swap" "outerHTML"
 
+isRefinedHandler :: Handler ()
+isRefinedHandler = do
+    paramJobId <- Scotty.queryParam @Int64 "job_id"
+    [Only status] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT status FROM marker_requests WHERE id = ?; |] $ Only paramJobId
+    case status of
+        "complete" -> do
+            result <- queryDb [sql|
+                SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no;
+            |] (Only paramJobId)
+            Scotty.html . renderHtml $ do
+                div ! id "document" ! customAttribute "hx-swap-oob" "true" $ getContent result
+                renderPoll False False
+                p ! customAttribute "hx-swap-oob" "beforeend:#logs" $ "✅ Done"
+        _ -> Scotty.html . renderHtml $ renderPoll True False
+
 resultPage :: Handler ()
 resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
@@ -134,14 +155,30 @@ resultPage = do
     |] (Only paramJobId)
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
-            div ! id "prompting"  $ promptForm paramJobId checkpointId
+            div ! id "prompting"  $ promptForm False paramJobId checkpointId
             div ! id "document" $ getContent result
             div $ do
+                renderPoll False False
                 code ! id "logs" $ do
-                    p "Welcome 🙋"
+                    p "Welcome! 🙋"
+
+getContent :: [(Text, Int)] -> Html
+getContent = renderPages . NE.groupWith snd
+
+renderPoll :: Bool -> Bool -> Html
+renderPoll active oob
+    | not active && not oob = div ! id "poll" $ mempty
+    | not active && oob     = div ! id "poll" ! hx_oob $ mempty
+    | active && not oob     = div ! id "poll" ! hx_get ! hx_include ! hx_trigger ! hx_swap $ mempty
+    | active && oob         = div ! id "poll" ! hx_get ! hx_include ! hx_trigger ! hx_swap ! hx_oob $ mempty
+    | otherwise             = div ! id "poll" $ mempty
     where
-        getContent :: [(Text, Int)] -> Html
-        getContent = renderPages . NE.groupWith snd
+        hx_get = customAttribute "hx-get" "/marker/is-refined"
+        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
+        hx_swap = customAttribute "hx-swap" "outerHTML"
+        hx_oob = customAttribute "hx-swap-oob" "true"
+        hx_include = customAttribute "hx-include" "[name='job_id']"
+
 
 renderPages :: [NonEmpty (Text, Int)] -> Html
 renderPages = mconcat . fmap renderPage
@@ -153,10 +190,10 @@ renderPage sections = article $ do
     mapM_ preEscapedToHtml $ fmap fst sections
     footer $ small $  text ("Page " <> showt pageNo)
 
-promptForm :: Int64 -> Text -> Html
-promptForm jobId checkpointId = form ! method "POST" ! action "/marker/refine" $ do
+promptForm :: Bool -> Int64 -> Text -> Html
+promptForm oob jobId checkpointId = form ! customAttribute "hx-post" "/marker/refine" !? (oob, customAttribute "hx_swap" "outerHTML") $ do
     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
-    input ! type_ "hidden" ! name "id" ! value (toValue jobId)
+    input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
     label $ do
         "Prompt"
         textarea ! name "prompt" $ text ""
@@ -357,6 +394,7 @@ getJobStatus url = do
     r <- asJSON @IO @JobResult =<< getWith opts (T.unpack url)
     let ps@(JobResult {..}) = r ^. responseBody
     putStrLn . T.unpack $ "Processing status: " <> markerStatus
+    whenJust checkpointId print
     return ps
 
 opts :: Options
@@ -374,8 +412,8 @@ pollMarkerJobResult AppEnv{..} = forever $ do
     case result of
         Right JobResult{..} -> when (markerStatus == "complete") $ do
             putStrLn "Polling finshed successfully"
-            saveCheckpointId connPool jobId $ fromMaybe "" checkpointId
-            -- TODO: insert all chunks
+            saveStatusComplete connPool jobId
+            whenJust checkpointId $ saveCheckpointId connPool jobId
             storeChunks connPool jobId $ maybe [] blocks chunks
             return ()
         Left _ -> putStrLn "Polling failed"
@@ -383,7 +421,11 @@ pollMarkerJobResult AppEnv{..} = forever $ do
     where
         saveCheckpointId :: Pool Connection -> Int64 -> Text -> IO ()
         saveCheckpointId pool jobId checkpointId = withResource pool $ \conn -> do
-            _ <- execute conn [sql| UPDATE marker_requests SET checkpoint_id = ?, status = 'complete' WHERE id = ?; |]  (checkpointId, jobId)
+            _ <- execute conn [sql| UPDATE marker_requests SET checkpoint_id = ? WHERE id = ?; |]  (checkpointId, jobId)
+            return ()
+        saveStatusComplete :: Pool Connection -> Int64 -> IO ()
+        saveStatusComplete pool jobId = withResource pool $ \conn -> do
+            _ <- execute conn [sql| UPDATE marker_requests SET status = 'complete' WHERE id = ?; |]  $ Only jobId
             return ()
         getDbRow :: Pool Connection -> Int64 -> IO Job
         getDbRow pool jobId = withResource pool $ \conn -> do
