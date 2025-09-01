@@ -29,7 +29,7 @@ import Network.HTTP.Client (HttpException(..))
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT)
 import Text.Blaze.Html5 hiding (object)
-import Text.Blaze.Html5.Attributes hiding (title, form, label)
+import Text.Blaze.Html5.Attributes hiding (title, form, label, span)
 import Text.Blaze.Html.Renderer.Text
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
@@ -48,6 +48,8 @@ service = do
     Scotty.get "/marker/job/:id/status" statusPage
     Scotty.get "/marker/job/:id/is-complete" isCompleteHandler
     Scotty.get "/marker/job/:id/result" resultPage
+    Scotty.post "/marker/page/prev" prevPageHandler
+    Scotty.post "/marker/page/next" nextPageHandler
     Scotty.post "/marker/refine" promptHandler
     Scotty.get "/marker/is-refined" isRefinedHandler
     Scotty.get "/marker/error" errorPage
@@ -99,7 +101,7 @@ promptHandler = do
             liftIO $ putMVar box jobId
             Scotty.html . renderHtml $ do
                 renderPoll True True
-                p ! customAttribute "hx-swap-oob" "beforeend:#logs" $ "💡 Processing..."
+                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p "💡 Processing..."
                 -- TODO: form is inserted into form - need to fix it
                 promptForm True jobId checkpointId
 
@@ -135,16 +137,15 @@ isCompleteHandler = do
 isRefinedHandler :: Handler ()
 isRefinedHandler = do
     paramJobId <- Scotty.queryParam @Int64 "job_id"
+    curr <- Scotty.queryParam @Int "page_no"
     [Only status] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT status FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     case status of
         "complete" -> do
-            result <- queryDb [sql|
-                SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no;
-            |] (Only paramJobId)
+            docPage <- getSinglePage True paramJobId curr
             Scotty.html . renderHtml $ do
-                div ! id "document" ! customAttribute "hx-swap-oob" "true" $ getContent result
+                docPage
                 renderPoll False False
-                p ! customAttribute "hx-swap-oob" "beforeend:#logs" $ "✅ Done"
+                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p "✅ Done"
         _ -> Scotty.html . renderHtml $ renderPoll True False
 
 resultPage :: Handler ()
@@ -152,17 +153,58 @@ resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
     layout <- layoutM
     [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
-    result <- queryDb [sql|
-        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no, page_order;
-    |] (Only paramJobId)
+    [Only total] <- queryDb @(Only Int64) @(Only Int) [sql| SELECT max(page_no) from marker_blocks where request_id = ?; |] $ Only paramJobId
+    docPage <- getSinglePage False paramJobId 1
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
             div ! id "prompting"  $ promptForm False paramJobId checkpointId
-            div ! id "document" $ getContent result
+            div $ do
+                navForm False total 1
+                docPage
             div $ do
                 renderPoll False False
                 code ! id "logs" $ do
                     p "Welcome! 🙋"
+
+getSinglePage :: Bool -> Int64 -> Int -> Handler Html
+getSinglePage oob jobId currentPage = do
+    result <- queryDb [sql|
+        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no = ? AND block_type <> 'Picture' ORDER BY page_no, page_order;
+    |] (jobId, currentPage)
+    return $ div ! id "document" !? (oob, hx_oob) $ getContent result
+
+navForm :: Bool -> Int -> Int -> Html
+navForm oob total curr = form ! id "nav_form" !? (oob, customAttribute "hx_swap" "outerHTML") !? (oob, customAttribute "hx-swap-oob" "true") $ do
+    input ! type_ "hidden" ! name "total_pages" ! value (toValue total)
+    input ! type_ "hidden" ! name "page_no" ! value (toValue curr)
+    div $ do
+        button ! customAttribute "hx-post" "/marker/page/prev" ! jobIdAttr !? (curr == 1, disabled "true") $ "Prev"
+        span $ toMarkup $ "Page " <> showt curr <> " of " <> showt total
+        button ! customAttribute "hx-post" "/marker/page/next" ! jobIdAttr !? (curr == total, disabled "true") $ "Next"
+    where
+        jobIdAttr = customAttribute "hx-include" "[name='job_id']"
+
+prevPageHandler :: Handler ()
+prevPageHandler = do
+    total <- Scotty.formParam @Int "total_pages"
+    curr <- Scotty.formParam @Int "page_no"
+    jobId <- Scotty.formParam @Int64 "job_id"
+    let curr' = if curr > 0 then curr - 1 else 0
+    docPage <- getSinglePage True jobId curr'
+    Scotty.html . renderHtml $ do
+        navForm True total curr'
+        docPage
+
+nextPageHandler :: Handler ()
+nextPageHandler = do
+    total <- Scotty.formParam @Int "total_pages"
+    curr <- Scotty.formParam @Int "page_no"
+    jobId <- Scotty.formParam @Int64 "job_id"
+    let curr' = if curr < total then curr + 1 else total 
+    docPage <- getSinglePage True jobId curr'
+    Scotty.html . renderHtml $ do
+        navForm True total curr'
+        docPage
 
 getContent :: [(Text, Int)] -> Html
 getContent = renderPages . NE.groupWith snd
@@ -178,9 +220,10 @@ renderPoll active oob
         hx_get = customAttribute "hx-get" "/marker/is-refined"
         hx_trigger = customAttribute "hx-trigger" "load delay:1s"
         hx_swap = customAttribute "hx-swap" "outerHTML"
-        hx_oob = customAttribute "hx-swap-oob" "true"
-        hx_include = customAttribute "hx-include" "[name='job_id']"
+        hx_include = customAttribute "hx-include" "[name='job_id'], [name='page_no']"
 
+hx_oob :: Attribute
+hx_oob = customAttribute "hx-swap-oob" "true"
 
 renderPages :: [NonEmpty (Text, Int)] -> Html
 renderPages = mconcat . fmap renderPage
@@ -193,7 +236,11 @@ renderPage sections = article $ do
     footer $ small $  text ("Page " <> showt pageNo)
 
 promptForm :: Bool -> Int64 -> Text -> Html
-promptForm oob jobId checkpointId = form ! customAttribute "hx-post" "/marker/refine" !? (oob, customAttribute "hx_swap" "outerHTML") $ do
+promptForm False jobId checkpointId = form ! customAttribute "hx-post" "/marker/refine" $ innerPromptForm jobId checkpointId
+promptForm True jobId checkpointId = innerPromptForm jobId checkpointId
+
+innerPromptForm :: Int64 -> Text -> Html
+innerPromptForm jobId checkpointId = do
     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
     input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
     label $ do
