@@ -1,0 +1,1 @@
+ALTER TABLE marker_blocks ADD COLUMN page_order INTEGER NOT NULL DEFAULT 0;

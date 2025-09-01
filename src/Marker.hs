@@ -1,7 +1,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric  #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant id" #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Marker
     ( convert
@@ -9,7 +11,7 @@ module Marker
     , health
     , service
     , pollMarkerJobResult
-    , parsePageNo
+    , parsePageNoAndOrder
     )
 where
 
@@ -151,7 +153,7 @@ resultPage = do
     layout <- layoutM
     [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     result <- queryDb [sql|
-        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no;
+        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no IS NOT NULL ORDER BY page_no, page_order;
     |] (Only paramJobId)
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
@@ -256,6 +258,11 @@ instance ToJSON JobResult where
             , "page_count" .= pageCount
             , "checkpoint_id" .= checkpointId
             ]
+
+newtype PageOrder = PageOrder Int
+    deriving (Show, Eq, Generic)
+deriving newtype instance FromField PageOrder
+deriving newtype instance ToField PageOrder
 
 data BlocksWrapper = BlocksWrapper { blocks :: [Block] }
     deriving (Generic, Show, Eq)
@@ -441,16 +448,20 @@ storeChunks pool jobId blocks = do
         -- delete previous chunks
         _ <- execute conn [sql| DELETE FROM marker_blocks WHERE request_id = ?; |] $ Only jobId
         _ <- executeMany conn [sql|
-            INSERT INTO marker_blocks (request_id, blockid, html, block_type, page_no) VALUES (?, ?, ?, ?, ?);
+            INSERT INTO marker_blocks (request_id, blockid, html, block_type, page_no, page_order) VALUES (?, ?, ?, ?, ?, ?);
         |] $ toRow jobId <$> blocks
         return ()
     where
-        toRow :: Int64 -> Block -> (Int64, Text, Text, Text, Maybe Int)
-        toRow jid Block{..} = (jid, blockId, html, blockType, parsePageNo blockId)
+        toRow :: Int64 -> Block -> (Int64, Text, Text, Text, Maybe Int, PageOrder)
+        toRow jid Block{..} = let (pageNo, pageOrder) = parsePageNoAndOrder blockId
+            in (jid, blockId, html, blockType, pageNo, fromMaybe defOrder pageOrder)
+        defOrder :: PageOrder
+        defOrder = PageOrder 0
 
-parsePageNo :: Text -> Maybe Int
-parsePageNo x = rightToMaybe . readEither . toString $ getPage chunks
+parsePageNoAndOrder :: Text -> (Maybe Int, Maybe PageOrder)
+parsePageNoAndOrder x = bimap (fmap (+1) . convert') (fmap PageOrder . convert') $ getPageAndOrder chunks
     where
+        convert' = rightToMaybe . readEither . toString
         chunks = T.split (=='/') x
-        getPage [_, _, page, _, _] = page
-        getPage _ = ""
+        getPageAndOrder [_, _, page, _, order] = (page, order)
+        getPageAndOrder _ = ("", "")
