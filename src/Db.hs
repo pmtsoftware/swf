@@ -15,4 +15,5 @@ migrateDb conn = runMigrations conn defaultOptions
     , MigrationFile "marker.sql" "./migrations/marker.sql"
     , MigrationFile "marker_page_no.sql" "./migrations/marker_page_no.sql"
     , MigrationFile "marker_page_order.sql" "./migrations/marker_page_order.sql"
+    , MigrationFile "prompt.sql" "./migrations/prompt.sql"
     ]

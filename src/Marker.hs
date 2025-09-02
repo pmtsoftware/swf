@@ -52,6 +52,7 @@ service = do
     Scotty.post "/marker/page/next" nextPageHandler
     Scotty.post "/marker/refine" promptHandler
     Scotty.get "/marker/is-refined" isRefinedHandler
+    Scotty.put "/marker/template" saveTemplateHandler
     Scotty.get "/marker/error" errorPage
 
 importForm :: Handler ()
@@ -97,13 +98,20 @@ promptHandler = do
         Nothing -> Scotty.redirect "/marker/error"
         Just OrderResult{..} -> do
             _ <- executeDb [sql| UPDATE marker_requests SET request_check_url = ?, status = '' WHERE id = ?; |] (requestCheckUrl, jobId)
+            _ <- executeDb [sql| insert into prompt_history (prompt, request_id) values (?, ?); |] (prompt, jobId)
             box <- lift $ asks markerRequest
             liftIO $ putMVar box jobId
             Scotty.html . renderHtml $ do
                 renderPoll True True
+                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p (toMarkup prompt)
                 div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p "💡 Processing..."
-                -- TODO: form is inserted into form - need to fix it
-                promptForm True jobId checkpointId
+
+
+saveTemplateHandler :: Handler ()
+saveTemplateHandler = do
+    prompt <- Scotty.formParam @Text "prompt"
+    _ <- executeDb [sql| UPDATE prompt_templates SET prompt = ? WHERE id = 1; |] $ Only prompt
+    Scotty.html . renderHtml $ mempty
 
 statusPage :: Handler ()
 statusPage = do
@@ -154,10 +162,11 @@ resultPage = do
     layout <- layoutM
     [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     [Only total] <- queryDb @(Only Int64) @(Only Int) [sql| SELECT max(page_no) from marker_blocks where request_id = ?; |] $ Only paramJobId
+    [Only templ] <- queryDb_ [sql| SELECT prompt FROM prompt_templates WHERE id = 1; |]
     docPage <- getSinglePage False paramJobId 1
     Scotty.html . renderHtml $ layout $ do
         div ! class_ "wrapper" $ do
-            div ! id "prompting"  $ promptForm False paramJobId checkpointId
+            div ! id "prompting"  $ promptForm paramJobId checkpointId templ
             div $ do
                 navForm False total 1
                 docPage
@@ -235,18 +244,26 @@ renderPage sections = article $ do
     mapM_ preEscapedToHtml $ fmap fst sections
     footer $ small $  text ("Page " <> showt pageNo)
 
-promptForm :: Bool -> Int64 -> Text -> Html
-promptForm False jobId checkpointId = form ! customAttribute "hx-post" "/marker/refine" $ innerPromptForm jobId checkpointId
-promptForm True jobId checkpointId = innerPromptForm jobId checkpointId
-
-innerPromptForm :: Int64 -> Text -> Html
-innerPromptForm jobId checkpointId = do
+promptForm :: Int64 -> Text -> Text -> Html
+promptForm jobId checkpointId defaultPrompt = form ! customAttribute "hx-post" "/marker/refine" $ do
     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
     input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
     label $ do
         "Prompt"
-        textarea ! name "prompt" $ text ""
+        textarea ! name "prompt" $ text defaultPrompt
     button ! type_ "submit" $ "Post"
+    button ! customAttribute "hx-put" "/marker/template" $ "Save as template"
+
+
+-- TODO: to remove probably
+-- innerPromptForm :: Int64 -> Text -> Html
+-- innerPromptForm jobId checkpointId = do
+--     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
+--     input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
+--     label $ do
+--         "Prompt"
+--         textarea ! name "prompt" $ text ""
+--     button ! type_ "submit" $ "Post"
 
 errorPage :: Handler ()
 errorPage = do
