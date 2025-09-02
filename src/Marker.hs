@@ -245,14 +245,15 @@ renderPage sections = article $ do
     footer $ small $  text ("Page " <> showt pageNo)
 
 promptForm :: Int64 -> Text -> Text -> Html
-promptForm jobId checkpointId defaultPrompt = form ! customAttribute "hx-post" "/marker/refine" $ do
+promptForm jobId checkpointId defaultPrompt = form ! customAttribute "hx-post" "/marker/refine" ! customAttribute "hx-swap" "none" $ do
     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
     input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
     label $ do
         "Prompt"
         textarea ! name "prompt" $ text defaultPrompt
-    button ! type_ "submit" $ "Post"
-    button ! customAttribute "hx-put" "/marker/template" $ "Save as template"
+    section $ do
+        button ! type_ "submit" $ "Run"
+        button ! customAttribute "hx-put" "/marker/template" ! customAttribute "hx-swap" "none" $ "Save as template"
 
 
 -- TODO: to remove probably

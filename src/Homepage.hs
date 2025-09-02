@@ -10,6 +10,8 @@ renderHomepage :: ByteString -> LText
 renderHomepage cssSha = renderHtml . layout cssSha $ do
     h1 "Hello world app"
     p "Welcome in our new web app when live reloading almost works!"
+    a ! href "/marker/start" $ "Start import"
+    br
     button "Example button"
 
 layout :: ByteString -> Html -> Html
