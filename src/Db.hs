@@ -13,4 +13,5 @@ migrateDb conn = runMigrations conn defaultOptions
     , MigrationFile "users.sql" "./migrations/users.sql"
     , MigrationFile "email_unique.sql" "./migrations/email_unique.sql"
     , MigrationFile "transactions.sql" "./migrations/transactions.sql"
+    , MigrationFile "transactions_year_month.sql" "./migrations/transactions_year_month.sql"
     ]

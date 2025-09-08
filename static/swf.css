@@ -50,6 +50,17 @@ a.delete::before {
     margin-right: .25em;
 }
 
+header {
+    display: flex;
+    flex-direction: row;
+    gap: 2em;
+    align-items: center;
+
+    h1, button {
+        margin: 0;
+    }
+}
+
 #transactions {
     & thead {
         & th:nth-child(1) {
