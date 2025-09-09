@@ -28,6 +28,7 @@ import Validation
 import Network.HTTP.Types (ok200)
 import Data.Time (Year, MonthOfYear, getCurrentTime, UTCTime (utctDay, UTCTime), toGregorian, fromGregorian)
 import Relude.Extra (un)
+import Database.PostgreSQL.Simple.FromField (Format(Text))
 
 newtype TransactionId = TransactionId Int64
     deriving (Show, Eq, Generic)
@@ -199,8 +200,6 @@ deletedPage = do
 printScientificValue :: Scientific -> Text
 printScientificValue = toText . Scientific.formatScientific Scientific.Generic (Just 2)
 
-rescue = Scotty.rescue @App @SomeException
-
 defaultTransactions :: ActionT App ()
 defaultTransactions = do
     period <- liftIO currentPeriod
@@ -213,10 +212,10 @@ periodTransactions = do
     transactions $ Period (y, m)
 
 transactions :: Period -> ActionT App ()
-transactions period = do
+transactions period@(Period (y, m)) = do
     pool <- lift $ asks connPool
     allTransactions <- liftIO $ withResource pool $ \conn -> do
-        query conn stmt $ periodRange period
+        query conn stmt (y, m)
     layout <- layoutM
     let total = sum $ transactionValue <$> allTransactions
         Period (prevY, prevM) = prevPeriod period
@@ -249,7 +248,7 @@ transactions period = do
             td $ text (printScientificValue transactionValue)
             td $ editLink transactionId
         stmt = [sql|
-            SELECT id, name, value, year, month FROM transactions WHERE created_at >= ? AND created_at < ? ORDER BY id DESC;
+            SELECT id, name, value, year, month FROM transactions WHERE year = ? AND month = ? ORDER BY id DESC;
         |]
 
 addTransactionHandler :: ActionT App ()
