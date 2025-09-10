@@ -107,6 +107,7 @@ executable swf-dev
 executable swf-exe
   main-is: Main.hs
   other-modules:
+      CommandLine
       Paths_swf
   autogen-modules:
       Paths_swf
@@ -124,6 +125,7 @@ executable swf-exe
       base >=4.7 && <5
     , dotenv
     , envy
+    , optparse-applicative
     , relude
     , swf
   default-language: Haskell2010
