@@ -11,6 +11,13 @@ packages:
       size: 697
   original:
     hackage: validation-selective-0.2.0.0
+- completed:
+    hackage: ollama-haskell-0.2.0.0@sha256:86ed797e79c90e5d2b0602bac83ae80418741a1770a0c122ee56b8bb8e58c3b6,2969
+    pantry-tree:
+      sha256: 1ba1131230e3cae2557093fc8560cf707f8d476ddcd80c9547921169c625b6ce
+      size: 1814
+  original:
+    hackage: ollama-haskell-0.2.0.0
 snapshots:
 - completed:
     sha256: 08bd13ce621b41a8f5e51456b38d5b46d7783ce114a50ab604d6bbab0d002146

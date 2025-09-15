@@ -67,6 +67,7 @@ library:
   - cereal-text
   - cryptohash-sha1
   - base16-bytestring
+  - ollama-haskell
 
 executables:
   swf-exe:

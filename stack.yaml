@@ -41,6 +41,7 @@ packages:
 #
 extra-deps:
   - validation-selective-0.2.0.0
+  - ollama-haskell-0.2.0.0
 
 # Override default flag values for project packages and extra-deps
 # flags: {}

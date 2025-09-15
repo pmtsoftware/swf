@@ -25,6 +25,7 @@ source-repository head
 
 library
   exposed-modules:
+      Agent
       App
       Common
       Config
@@ -61,6 +62,7 @@ library
     , envy
     , http-types
     , monad-logger
+    , ollama-haskell
     , password
     , postgresql-migration
     , postgresql-simple
