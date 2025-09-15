@@ -68,6 +68,8 @@ library:
   - cryptohash-sha1
   - base16-bytestring
   - ollama-haskell
+  - wai-middleware-bearer
+  - aeson
 
 executables:
   swf-exe:

@@ -18,6 +18,7 @@ data AppConfig = AppConfig
     , pgport     :: Int    -- PGPORT
     , pgdatabase :: Text   -- PGDATABASE
     , pguser     :: Text   -- PGUSER
+    , secret     :: Text   -- SECRET
     }
     deriving (Generic, Show)
 
@@ -29,6 +30,7 @@ instance DefConfig AppConfig where
         , pgport = 5432
         , pgdatabase = "swf"
         , pguser = "swf"
+        , secret = error "SECRET must be provided"
         }
 
 instance FromEnv AppConfig
