@@ -1,0 +1,5 @@
+CREATE TABLE docs (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    file_name TEXT NOT NULL,
+    md TEXT NOT NULL
+)

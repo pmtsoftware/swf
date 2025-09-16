@@ -70,6 +70,7 @@ library:
   - ollama-haskell
   - wai-middleware-bearer
   - aeson
+  - pandoc
 
 executables:
   swf-exe:

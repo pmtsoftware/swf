@@ -11,3 +11,4 @@ main = do
     case opt of
         App -> start
         AddUser _ _ -> putStrLn "Add user"
+        Import _ -> putStrLn "Import"

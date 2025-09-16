@@ -64,6 +64,7 @@ library
     , http-types
     , monad-logger
     , ollama-haskell
+    , pandoc
     , password
     , postgresql-migration
     , postgresql-simple
