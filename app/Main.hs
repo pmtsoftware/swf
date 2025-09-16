@@ -4,6 +4,7 @@ import Relude
 
 import App
 import CommandLine
+import Import (importFile)
 
 main :: IO ()
 main = do
@@ -11,4 +12,4 @@ main = do
     case opt of
         App -> start
         AddUser _ _ -> putStrLn "Add user"
-        Import _ -> putStrLn "Import"
+        Import fp -> importFile fp

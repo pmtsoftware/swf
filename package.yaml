@@ -71,6 +71,7 @@ library:
   - wai-middleware-bearer
   - aeson
   - pandoc
+  - filepath
 
 executables:
   swf-exe:
