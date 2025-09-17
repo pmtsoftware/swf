@@ -12,11 +12,15 @@ import System.FilePath (takeBaseName, dropExtension)
 importFile :: FilePath -> IO ()
 importFile path = do
     bs <- readFileLBS path
-    result <- runIO $ readDocx def bs >>= writeMarkdown def
+    result <- runIO $ readDocx def bs >>= writeMarkdown opts
     either print save result
     pure ()
 
     where
+        opts :: WriterOptions
+        opts = def {
+            writerExtensions = extensionsFromList [Ext_grid_tables]
+        }
         save :: Text -> IO ()
         save md = do
             _ <- loadAppConfig
