@@ -4,8 +4,8 @@ module App
     ) where
 
 import Common
-
 import Db
+import qualified Service as AI
 
 import qualified Web.Scotty.Trans as Scotty
 
@@ -17,7 +17,14 @@ import Web.ClientSession (getDefaultKey)
 import Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Base16 as Base16
 import qualified Network.Wai.Middleware.BearerTokenAuth as Bearer
+import qualified Network.Wai.Middleware.Cors as Cors
 import Data.Aeson
+
+apiCors :: Cors.CorsResourcePolicy
+apiCors = Cors.simpleCorsResourcePolicy
+    { Cors.corsMethods = Cors.simpleMethods <> ["OPTIONS", "DELETE"]
+    , Cors.corsRequestHeaders = Cors.simpleHeaders <> ["Content-Type", "Authorization"]
+    }
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -53,10 +60,12 @@ instance ToJSON Ok where
 
 application :: AppConfig -> ScottyT App ()
 application AppConfig{..} = do
+        Scotty.middleware $ Cors.cors (const (Just apiCors))
         Scotty.middleware  $ Bearer.tokenListAuth [encodeUtf8 secret]
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
             Scotty.json $ Ok True
+        AI.service
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."

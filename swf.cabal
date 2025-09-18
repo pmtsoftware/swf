@@ -33,6 +33,7 @@ library
       Homepage
       Import
       Lib
+      Service
       Session
       Types
       Users
@@ -78,6 +79,7 @@ library
     , unliftio
     , validation-selective
     , wai-app-static
+    , wai-cors
     , wai-middleware-bearer
     , warp
   default-language: Haskell2010

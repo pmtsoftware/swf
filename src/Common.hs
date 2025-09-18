@@ -13,6 +13,7 @@ module Common
     , module Database.PostgreSQL.Simple.SqlQQ
     , module Data.Pool
     , queryDb
+    , queryDb_
     , executeDb
     ) where
 
@@ -46,6 +47,11 @@ queryDb :: (ToRow q, FromRow r) => Query -> q -> Handler [r]
 queryDb stmt args = do
     connPool <- lift $ asks connPool
     liftIO $ withResource connPool $ \conn -> query conn stmt args
+
+queryDb_ :: (FromRow r) => Query -> Handler [r]
+queryDb_ stmt = do
+    connPool <- lift $ asks connPool
+    liftIO $ withResource connPool $ \conn -> query_ conn stmt
 
 executeDb :: (ToRow q) => Query -> q -> Handler Int64
 executeDb stmt args = do
