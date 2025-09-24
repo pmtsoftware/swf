@@ -14,7 +14,7 @@ import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
 import qualified Network.Wai.Handler.Warp as Warp
-import Control.Monad.Logger (runStdoutLoggingT, logInfoN)
+import Control.Monad.Logger (runStdoutLoggingT)
 import Web.ClientSession (getDefaultKey)
 import Session (auth, ensureSession)
 import Crypto.Hash.SHA1 (hash)
@@ -53,7 +53,7 @@ application = do
         Scotty.get "/" $ do
             ensureSession
             checksum <- lift $ asks cssChecksum
-            lift $ logInfoN "GET home page"
+            logInfo "GET home page"
             Scotty.html $ renderHomepage checksum
         users
         auth
