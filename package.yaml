@@ -58,7 +58,6 @@ library:
   - monad-logger
   - wai-app-static
   - password
-  - text-show
   - time
   - email-validate
   - validation-selective
@@ -67,6 +66,7 @@ library:
   - cereal-text
   - cryptohash-sha1
   - base16-bytestring
+  - fmt
 
 executables:
   swf-exe:
@@ -92,7 +92,7 @@ executables:
     - filepath
     - websockets
     - time
-    - text-show
+    - fmt
 
 tests:
   swf-test:

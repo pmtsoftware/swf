@@ -59,6 +59,7 @@ library
     , dotenv
     , email-validate
     , envy
+    , fmt
     , http-types
     , monad-logger
     , password
@@ -67,7 +68,6 @@ library
     , relude
     , resource-pool
     , scotty
-    , text-show
     , time
     , unliftio
     , validation-selective
@@ -96,10 +96,10 @@ executable swf-dev
     , dotenv
     , envy
     , filepath
+    , fmt
     , fsnotify
     , process
     , relude
-    , text-show
     , time
     , websockets
   default-language: Haskell2010

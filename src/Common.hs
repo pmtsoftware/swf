@@ -12,6 +12,7 @@ module Common
     , module Database.PostgreSQL.Simple.ToField
     , module Database.PostgreSQL.Simple.SqlQQ
     , module Data.Pool
+    , module Fmt
     , queryDb
     , executeDb
     ) where
@@ -29,6 +30,7 @@ import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, MonadLogger)
 import Web.ClientSession (Key)
 import Web.Scotty.Trans (ActionT)
+import Fmt ((+|), (|+))
 
 data AppEnv = AppEnv
     { cfg :: AppConfig

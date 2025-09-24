@@ -12,10 +12,10 @@ import Web.Scotty.Trans (ScottyT, ActionT)
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
-import TextShow hiding (toString, toText)
 import qualified Data.List.NonEmpty as NE
 import Data.Password.Argon2 (Password, mkPassword, hashPassword)
 import Data.Password.Validate
+import qualified Data.Text as T
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Validation
@@ -118,7 +118,7 @@ listOfUsers = do
     where
         toRow :: User -> Html
         toRow User{..} = tr $ do
-            th ! scope "col" $ text (showt userId)
+            th ! scope "col" $ text . T.pack . show $ userId
             td $ text (un email)
         stmt = [sql|
             SELECT id, email, locked_at, failed_login_attempts FROM users;
@@ -161,12 +161,12 @@ renderPasswordErrors errs = ul $ forM_ errs render
         render Paswword2Mismatch = li "Mismatch with second password field"
         render _ = mempty
         render' :: InvalidReason -> Html
-        render' (PasswordTooShort minLen _) = li $ "Password is too short. Min length " <> text (showt minLen) <> " characters."
-        render' (PasswordTooLong maxLen _) = li $ "Password too long. Maz length " <> text (showt maxLen) <> " characters."
-        render' (NotEnoughReqChars Uppercase minAmount _) = li $ "At least " <> text (showt minAmount) <> " of uppercase letters required."
-        render' (NotEnoughReqChars Lowercase minAmount _) = li $ "At least " <> text (showt minAmount) <> " of lowercase letters required."
-        render' (NotEnoughReqChars Special minAmount _) = li $ "At least " <> text (showt minAmount) <> " of special characters required."
-        render' (NotEnoughReqChars Digit minAmount _) = li $ "At least " <> text (showt minAmount) <> " of digits required."
+        render' (PasswordTooShort minLen _) = li $ text $ "Password is too short. Min length " +| minLen |+ " characters."
+        render' (PasswordTooLong maxLen _) = li $ text $ "Password too long. Maz length " +| maxLen |+ " characters."
+        render' (NotEnoughReqChars Uppercase minAmount _) = li $ text $ "At least " +| minAmount |+ " of uppercase letters required."
+        render' (NotEnoughReqChars Lowercase minAmount _) = li $ text $ "At least " +| minAmount |+ " of lowercase letters required."
+        render' (NotEnoughReqChars Special minAmount _) = li $ text $ "At least " +| minAmount |+ " of special characters required."
+        render' (NotEnoughReqChars Digit minAmount _) = li $ text $ "At least " +| minAmount |+ " of digits required."
         render' (InvalidCharacters chars) = li $ "Password contains chracters than cannot be used: " <> text chars
 
 -- TODO: handle unexpected SQL errors
@@ -200,7 +200,7 @@ addUserHandler = do
     either (handleError formData) handleSucces result
     where
         handleSucces :: UserId -> ActionT App ()
-        handleSucces userId = Scotty.redirect $ "/user/" <> showtl userId
+        handleSucces userId = Scotty.redirect $ "/user/" +| unUserId userId |+ ""
 
         handleError :: Form -> NonEmpty FormValidationError -> ActionT App ()
         handleError f errs = do

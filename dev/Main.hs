@@ -12,15 +12,12 @@ import qualified Network.WebSockets as WS
 import Control.Concurrent.Chan (Chan)
 import Control.Exception (finally)
 import Data.Time.Clock.System (SystemTime, getSystemTime)
-import TextShow (TextShow, showb, showt, fromText)
+import Fmt ((+|), (|+))
 
 type ProcDescr = (Maybe Handle, Maybe Handle, Maybe Handle, ProcessHandle)
 
 data DevEvent = AppBuild | FileChanged !Text
     deriving (Show, Eq)
-instance TextShow DevEvent where
-    showb AppBuild = "build"
-    showb (FileChanged fn) = "file " <> fromText fn
 
 -- we will use timestamp as client id (should be ok for local connections)
 type Clients = MVar [(SystemTime, Chan DevEvent)]
@@ -98,7 +95,11 @@ runDevServer connsBox = do
     where
         run :: Clients -> WS.Connection -> (SystemTime, Chan DevEvent) -> IO ()
         run allClients conn (clientId, chan) = flip finally (cleanup clientId allClients) $ do
-            forever $ readChan chan >>= \e -> WS.sendTextData @Text conn (showt e)
+            forever $ readChan chan >>= \e -> WS.sendTextData @Text conn (reportEvent e)
+
+        reportEvent :: DevEvent -> Text
+        reportEvent AppBuild = "build"
+        reportEvent (FileChanged fn) = "file " +| fn |+ ""
 
         cleanup :: SystemTime -> Clients -> IO ()
         cleanup clientId allClients = do
