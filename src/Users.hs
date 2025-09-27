@@ -64,6 +64,7 @@ data FormValidationError
     | EmailNotUnique
     | InvalidPass  !InvalidReason
     | Paswword2Mismatch
+    deriving (Show, Eq)
 
 validateEmail :: ByteString -> Validation (NonEmpty FormValidationError) Email
 validateEmail = validate (NE.singleton InvalidEmail) $ fmap toEmail . EmailV.emailAddress
@@ -151,28 +152,31 @@ userForm Form{..} errors = do
             button ! type_ "submit" $ "Save"
 
 renderEmailErrors :: NonEmpty FormValidationError -> Html
-renderEmailErrors errs = ul $ forM_ errs render
+renderEmailErrors errs = ul $ forM_ [x | x <- toList errs, x == InvalidEmail, x == EmailNotUnique] render
     where
-        render :: FormValidationError -> Html
-        render InvalidEmail = li "Invalid email address"
-        render EmailNotUnique = li "Email already exists"
-        render _ = mempty
+        render err = li $ text $ reportFormValidationError err
 
 renderPasswordErrors :: NonEmpty FormValidationError -> Html
-renderPasswordErrors errs = ul $ forM_ errs render
+renderPasswordErrors errs = ul $ forM_ [x | x <- toList errs, isInvalidPass x, x == Paswword2Mismatch] render
     where
-        render :: FormValidationError -> Html
-        render (InvalidPass reason) =  render' reason
-        render Paswword2Mismatch = li "Mismatch with second password field"
-        render _ = mempty
-        render' :: InvalidReason -> Html
-        render' (PasswordTooShort minLen _) = li $ text $ "Password is too short. Min length " +| minLen |+ " characters."
-        render' (PasswordTooLong maxLen _) = li $ text $ "Password too long. Maz length " +| maxLen |+ " characters."
-        render' (NotEnoughReqChars Uppercase minAmount _) = li $ text $ "At least " +| minAmount |+ " of uppercase letters required."
-        render' (NotEnoughReqChars Lowercase minAmount _) = li $ text $ "At least " +| minAmount |+ " of lowercase letters required."
-        render' (NotEnoughReqChars Special minAmount _) = li $ text $ "At least " +| minAmount |+ " of special characters required."
-        render' (NotEnoughReqChars Digit minAmount _) = li $ text $ "At least " +| minAmount |+ " of digits required."
-        render' (InvalidCharacters chars) = li $ "Password contains chracters than cannot be used: " <> text chars
+        render err = li $ text $ reportFormValidationError err
+        isInvalidPass (InvalidPass _) =  True
+        isInvalidPass _ =  False
+
+reportFormValidationError :: FormValidationError -> Text
+reportFormValidationError InvalidEmail = "Invalid email address"
+reportFormValidationError EmailNotUnique = "Email already exists"
+reportFormValidationError (InvalidPass reason) = reportPassValiadtionError reason
+reportFormValidationError Paswword2Mismatch = "Mismatch with second password field"
+
+reportPassValiadtionError :: InvalidReason -> Text
+reportPassValiadtionError (PasswordTooShort minLen _) = "Password is too short. Min length " +| minLen |+ " characters."
+reportPassValiadtionError (PasswordTooLong maxLen _) = "Password too long. Maz length " +| maxLen |+ " characters."
+reportPassValiadtionError (NotEnoughReqChars Uppercase minAmount _) = "At least " +| minAmount |+ " of uppercase letters required."
+reportPassValiadtionError (NotEnoughReqChars Lowercase minAmount _) = "At least " +| minAmount |+ " of lowercase letters required."
+reportPassValiadtionError (NotEnoughReqChars Special minAmount _) = "At least " +| minAmount |+ " of special characters required."
+reportPassValiadtionError (NotEnoughReqChars Digit minAmount _) = "At least " +| minAmount |+ " of digits required."
+reportPassValiadtionError (InvalidCharacters chars) = "Password contains chracters than cannot be used: " <> chars
 
 -- TODO: handle unexpected SQL errors
 createUser :: Connection -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
@@ -191,7 +195,7 @@ createUser conn formData = case validateForm formData of
                 return (uid :: UserId)
 
         stmt = [sql|
-            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id
+            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id;
         |]
 
 addUserHandler :: ActionT App ()
