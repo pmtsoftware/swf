@@ -70,7 +70,7 @@ library
     , scotty
     , time
     , unliftio
-    , validation-selective
+    , validation
     , wai-app-static
     , warp
   default-language: Haskell2010

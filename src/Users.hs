@@ -18,7 +18,7 @@ import Data.Password.Validate
 import qualified Data.Text as T
 import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
-import Validation
+import Data.Validation
 import Relude.Extra.Newtype (un)
 import Network.HTTP.Types (badRequest400)
 import Database.PostgreSQL.Simple.Errors (catchViolation, ConstraintViolation (UniqueViolation))
@@ -62,7 +62,7 @@ data FormValidationError
     | Paswword2Mismatch
 
 validateEmail :: ByteString -> Validation (NonEmpty FormValidationError) Email
-validateEmail emailInput = maybeToSuccess (NE.singleton InvalidEmail) $ toEmail <$> EmailV.emailAddress emailInput
+validateEmail = validate (NE.singleton InvalidEmail) $ fmap toEmail . EmailV.emailAddress
     where
         toEmail :: EmailAddress -> Email
         toEmail = Email . decodeUtf8 . EmailV.toByteString
@@ -81,13 +81,14 @@ validatePassPolicy inputPass = mkPassword inputPass <$ checkFailure result
             Just errs' -> Failure errs'
 
 validatePassword2 :: Text -> Text -> Validation (NonEmpty FormValidationError) Password
-validatePassword2 inputPass inputPass2 = mkPassword inputPass <$ failureIf (inputPass /= inputPass2) Paswword2Mismatch
+validatePassword2 inputPass inputPass2 = if  inputPass == inputPass2
+    then Success $ mkPassword inputPass
+    else Failure $ NE.singleton Paswword2Mismatch
 
 validateForm :: Form -> Validation (NonEmpty FormValidationError) (Email, Password)
 validateForm Form{..} = (,)
     <$> validateEmail formEmail
     <*> validatePasswd formPassword formPassword2
-
 
 users :: ScottyT App ()
 users = do
@@ -114,7 +115,7 @@ listOfUsers = do
                 th ! scope "col" $ "Email"
             tbody $ do
                 forM_ allUsers toRow
-        
+
     where
         toRow :: User -> Html
         toRow User{..} = tr $ do

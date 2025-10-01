@@ -60,13 +60,13 @@ library:
   - password
   - time
   - email-validate
-  - validation-selective
   - clientsession
   - cereal
   - cereal-text
   - cryptohash-sha1
   - base16-bytestring
   - fmt
+  - validation
 
 executables:
   swf-exe:
