@@ -34,6 +34,9 @@ library
       Session
       Types
       Users
+      Webauthn.Database
+      Webauthn.MetadataFetch
+      Webauthn.PendingCeremonies
   other-modules:
       Paths_swf
   autogen-modules:
@@ -49,17 +52,27 @@ library
       DeriveGeneric
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.7 && <5
+      aeson
+    , attoparsec
+    , base >=4.7 && <5
     , base16-bytestring
+    , binary
     , blaze-html
+    , bytestring
     , cereal
     , cereal-text
     , clientsession
+    , clock
+    , containers
     , cryptohash-sha1
+    , cryptonite
     , dotenv
     , email-validate
     , envy
     , fmt
+    , hourglass
+    , http-client
+    , http-client-tls
     , http-types
     , monad-logger
     , password
@@ -68,11 +81,15 @@ library
     , relude
     , resource-pool
     , scotty
+    , serialise
+    , stm
+    , these
     , time
     , unliftio
     , validation
     , wai-app-static
     , warp
+    , webauthn
   default-language: Haskell2010
 
 executable swf-dev

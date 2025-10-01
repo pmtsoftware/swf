@@ -3,7 +3,14 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: webauthn-0.11.0.0@sha256:48a79923f29d266c29b4730c2e4c7da08444b033be1241babb24a65e08ac41ef,6414
+    pantry-tree:
+      sha256: ccd7c89c658d522286b5201270bcad95245d0c2ded7d4687c3c52ecc2238d19c
+      size: 11727
+  original:
+    hackage: webauthn-0.11.0.0
 snapshots:
 - completed:
     sha256: 08bd13ce621b41a8f5e51456b38d5b46d7783ce114a50ab604d6bbab0d002146
