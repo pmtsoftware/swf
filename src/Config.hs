@@ -14,6 +14,7 @@ import  Configuration.Dotenv
 data AppConfig = AppConfig
     { appHost    :: Text   -- APP_HOST
     , appPort    :: Int    -- APP_PORT
+    , appOrigin  :: Text   -- APP_ORIGIN
     , pghost     :: Text   -- PGHOST
     , pgport     :: Int    -- PGPORT
     , pgdatabase :: Text   -- PGDATABASE
@@ -25,6 +26,7 @@ instance DefConfig AppConfig where
     defConfig = AppConfig
         { appHost = "localhost"
         , appPort = 3000
+        , appOrigin = "http://localhost:3000"
         , pghost = ""
         , pgport = 5432
         , pgdatabase = "swf"

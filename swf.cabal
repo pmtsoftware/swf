@@ -37,6 +37,7 @@ library
       Webauthn.Database
       Webauthn.MetadataFetch
       Webauthn.PendingCeremonies
+      Webauthn.Service
   other-modules:
       Paths_swf
   autogen-modules:
@@ -53,9 +54,11 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       aeson
+    , aeson-pretty
     , attoparsec
     , base >=4.7 && <5
     , base16-bytestring
+    , base64-bytestring
     , binary
     , blaze-html
     , bytestring
@@ -64,6 +67,7 @@ library
     , clientsession
     , clock
     , containers
+    , cookie
     , cryptohash-sha1
     , cryptonite
     , dotenv
@@ -83,6 +87,7 @@ library
     , scotty
     , serialise
     , stm
+    , text
     , these
     , time
     , unliftio

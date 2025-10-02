@@ -19,6 +19,8 @@ import Web.ClientSession (getDefaultKey)
 import Session (auth, ensureSession)
 import Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Base16 as Base16
+import Webauthn.PendingCeremonies (newPendingCeremonies, defaultPendingCeremoniesConfig)
+import Webauthn.MetadataFetch (emptyRegistry)
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -37,7 +39,9 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     _ <- withResource pool migrateDb
     key <- getDefaultKey
     cssChecksum <- buildCssChecksum
-    let env = AppEnv cfg pool key cssChecksum
+    pendingCeremonies <- newPendingCeremonies defaultPendingCeremoniesConfig
+    registry <- newTVarIO emptyRegistry
+    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry
         warpSettings = Warp.setPort appPort
             . Warp.setBeforeMainLoop beforeMainLoop
             $ Warp.defaultSettings
