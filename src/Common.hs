@@ -37,12 +37,16 @@ import Control.Monad.Logger (LoggingT, MonadLogger, logInfoN, logDebugN, logWarn
 import Web.ClientSession (Key)
 import Web.Scotty.Trans (ActionT)
 import Fmt ((+|), (|+))
+import Webauthn.PendingCeremonies (PendingCeremonies)
+import Crypto.WebAuthn (MetadataServiceRegistry)
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
     , connPool :: Pool Connection
     , sessionKey :: Key
     , cssChecksum :: ByteString
+    , pendingCeremonies :: PendingCeremonies
+    , registry :: TVar MetadataServiceRegistry
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }

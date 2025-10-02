@@ -82,6 +82,10 @@ library:
   - http-client
   - http-client-tls
   - http-types
+  - cookie
+  - text
+  - base64-bytestring
+  - aeson-pretty
 
 executables:
   swf-exe:
