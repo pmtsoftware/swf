@@ -10,3 +10,4 @@ Simple Web Framework
 - [ ] support server session with `server-session`  library
 - [ ] try `servant` as library to endpoint implementation
 - [ ] swap water.css with matcha.css which is more modern css library
+- [ ] replace water css library with matcha css
