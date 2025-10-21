@@ -1,4 +1,8 @@
-module Users ( users ) where
+module Users
+    ( users
+    , createUser
+    , Form(..)
+    ) where
 
 import Common hiding (pass)
 import Types
@@ -171,18 +175,18 @@ renderPasswordErrors errs = ul $ forM_ errs render
         render' (InvalidCharacters chars) = li $ "Password contains chracters than cannot be used: " <> text chars
 
 -- TODO: handle unexpected SQL errors
-createUser :: AppEnv -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
-createUser env formData = case validateForm formData of
-    Success data' -> catchViolation catcher $ Right <$> run env data'
+createUser :: Connection -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
+createUser conn formData = case validateForm formData of
+    Success data' -> catchViolation catcher $ Right <$> run data'
     Failure errs -> pure $ Left errs
     where
         catcher _ (UniqueViolation "email_unique") = pure . Left $ NE.singleton EmailNotUnique
         catcher e _ = throwIO e
 
-        run :: AppEnv -> (Email, Password) -> IO UserId
-        run AppEnv{..} (mail, pass) = do
+        run :: (Email, Password) -> IO UserId
+        run (mail, pass) = do
             pwHash <- hashPassword pass
-            liftIO $ withResource connPool $ \conn -> do
+            liftIO $ do
                 [Only uid] <- query conn stmt (mail, pwHash)
                 return (uid :: UserId)
 
@@ -196,8 +200,8 @@ addUserHandler = do
         <$> Scotty.formParam "email"
         <*> Scotty.formParam "password"
         <*> Scotty.formParam "password2"
-    env <- lift ask
-    result <- liftIO $ createUser env formData
+    AppEnv{..} <- lift ask
+    result <- liftIO $ withResource connPool $ \conn -> createUser conn formData
     either (handleError formData) handleSucces result
     where
         handleSucces :: UserId -> ActionT App ()

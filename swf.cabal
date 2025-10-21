@@ -126,6 +126,7 @@ executable swf-exe
     , dotenv
     , envy
     , optparse-applicative
+    , postgresql-simple
     , relude
     , swf
   default-language: Haskell2010

@@ -79,6 +79,7 @@ executables:
     dependencies:
     - swf
     - optparse-applicative
+    - postgresql-simple
   swf-dev:
     main:                Main.hs
     source-dirs:         dev
