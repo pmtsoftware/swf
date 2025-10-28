@@ -37,6 +37,7 @@ import Database.PostgreSQL.Simple.SqlQQ
 import Database.PostgreSQL.Simple.FromField
 import Data.Attoparsec.ByteString
 import Data.Attoparsec.ByteString.Char8 (signed, decimal)
+import Types
 
 instance FromField Word32 where
     fromField f Nothing = returnError UnexpectedNull f ""
@@ -60,22 +61,22 @@ insertUser conn user =
         } = user
    in execute
         conn
-        [sql| insert into users (handle, account_name, account_display_name) values (?, ?, ?); |]
+        [sql| INSERT INTO users (handle, email, display_name) VALUES (?, ?, ?); |]
         (handle, accountName, accountDisplayName)
 
 -- | Check if a user exists in the database
 userExists :: Connection -> WA.UserAccountName -> IO Bool
 userExists conn (WA.UserAccountName accountName) = do
-  results :: [Only Text] <- query conn [sql| select account_name from users where account_name = ?; |] $ Only accountName
+  results :: [Only Text] <- query conn [sql| SELECT email FROM users WHERE account_name = ?; |] $ Only accountName
   pure $ not $ null results
 
 -- | Inserts a new credential entry into the database. The example server's
 -- logic doesn't allow multiple credential per user, but a typical RP
 -- implementation will likely want to support it.
 insertCredentialEntry ::
-  Connection ->
-  WA.CredentialEntry ->
-  IO Int64
+    Connection ->
+    WA.CredentialEntry ->
+    IO Int64
 insertCredentialEntry
   conn
   WA.CredentialEntry
@@ -88,7 +89,7 @@ insertCredentialEntry
     do
       execute
         conn
-        [sql| insert into credential_entries (credential_id, user_handle, public_key, sign_counter, transports) values (?, ?, ?, ?, ?); |]
+        [sql| INSERT INTO credential_entries (credential_id, user_handle, public_key, sign_counter, transports) VALUES (?, ?, ?, ?, ?); |]
         ( credentialId,
           userHandle,
           publicKey,
@@ -101,7 +102,7 @@ queryCredentialEntryByCredential :: Connection -> WA.CredentialId -> IO (Maybe W
 queryCredentialEntryByCredential conn (WA.CredentialId credentialId) = do
     entries <- query
         conn
-        [sql| select credential_id, user_handle, public_key, sign_counter, transports from credential_entries where credential_id = ?; |]
+        [sql| SELECT credential_id, user_handle, public_key, sign_counter, transports FROM credential_entries WHERE credential_id = ?; |]
         (Only credentialId)
     case entries of
         [] -> pure Nothing
@@ -116,10 +117,10 @@ queryCredentialEntriesByUser conn (WA.UserAccountName accountName) = do
     entries <- query
         conn
         [sql|
-            select credential_id, user_handle, public_key, sign_counter, transports
-            from credential_entries 
-            join users on users.handle = credential_entries.user_handle 
-            where account_name = ?;
+            SELECT credential_id, user_handle, public_key, sign_counter, transports
+            FROM credential_entries 
+            JOIN users on users.handle = credential_entries.user_handle 
+            WHERE account_name = ?;
         |]
         (Only accountName)
     traverse toCredentialEntry entries
@@ -130,7 +131,7 @@ updateSignatureCounter :: Connection -> WA.CredentialId -> WA.SignatureCounter -
 updateSignatureCounter conn (WA.CredentialId credentialId) (WA.SignatureCounter counter) =
     execute
         conn
-        [sql| update credential_entries set sign_counter = ? where credential_id = ?; |]
+        [sql| UPDATE credential_entries SET sign_counter = ? WHERE credential_id = ?; |]
         (counter, credentialId)
 
 -- | Encodes a list of 'WA.AuthenticatorTransport' into a 'BS.ByteString' using
@@ -168,7 +169,7 @@ queryUserByAuthToken :: Connection -> AuthToken -> IO (Maybe WA.UserAccountName)
 queryUserByAuthToken conn (AuthToken token) = do
     result <- query
         conn
-        [sql| select account_name from auth_tokens join users on users.handle = auth_tokens.user_handle where token = ?; |]
+        [sql| SELECT account_name FROM auth_tokens JOIN users ON users.handle = auth_tokens.user_handle WHERE token = ?; |]
         (Only token)
     case result of
         [] -> pure Nothing
@@ -180,7 +181,7 @@ insertAuthToken :: Connection -> AuthToken -> WA.UserHandle -> IO Int64
 insertAuthToken conn (AuthToken token) (WA.UserHandle userHandle) = do
     execute
         conn
-        [sql| insert into auth_tokens (token, user_handle) values (?, ?); |]
+        [sql| INSERT INTO auth_tokens (token, user_handle) VALUES (?, ?); |]
         (token, userHandle)
 
 -- | Remove the `AuthToken` from the database, effectively logging out the
@@ -189,5 +190,5 @@ deleteAuthToken :: Connection -> AuthToken -> IO Int64
 deleteAuthToken conn (AuthToken token) = do
     execute
         conn
-        [sql| delete from auth_tokens where token = ?; |]
+        [sql| DELETE FROM auth_tokens WHERE token = ?; |]
         [token]

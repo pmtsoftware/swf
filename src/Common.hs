@@ -38,7 +38,7 @@ import Web.ClientSession (Key)
 import Web.Scotty.Trans (ActionT)
 import Fmt ((+|), (|+))
 import Webauthn.PendingCeremonies (PendingCeremonies)
-import Crypto.WebAuthn (MetadataServiceRegistry)
+import Crypto.WebAuthn (MetadataServiceRegistry, RpIdHash)
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
@@ -47,6 +47,7 @@ data AppEnv = AppEnv
     , cssChecksum :: ByteString
     , pendingCeremonies :: PendingCeremonies
     , registry :: TVar MetadataServiceRegistry
+    , rpIdHash :: RpIdHash
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }

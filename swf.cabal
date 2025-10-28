@@ -69,7 +69,7 @@ library
     , containers
     , cookie
     , cryptohash-sha1
-    , cryptonite
+    , crypton
     , dotenv
     , email-validate
     , envy

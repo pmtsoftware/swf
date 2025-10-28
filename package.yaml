@@ -69,7 +69,7 @@ library:
   - validation
   - webauthn
   - serialise
-  - cryptonite
+  - crypton
   - attoparsec
   - bytestring
   - stm

@@ -21,6 +21,8 @@ import Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Base16 as Base16
 import Webauthn.PendingCeremonies (newPendingCeremonies, defaultPendingCeremoniesConfig)
 import Webauthn.MetadataFetch (emptyRegistry)
+import Crypto.WebAuthn (RpIdHash(..))
+import qualified Crypto.Hash as Hash
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -41,7 +43,8 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     cssChecksum <- buildCssChecksum
     pendingCeremonies <- newPendingCeremonies defaultPendingCeremoniesConfig
     registry <- newTVarIO emptyRegistry
-    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry
+    let rpIdHash = RpIdHash $ Hash.hash $ encodeUtf8 @Text @ByteString "localhost"
+    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry rpIdHash
         warpSettings = Warp.setPort appPort
             . Warp.setBeforeMainLoop beforeMainLoop
             $ Warp.defaultSettings
