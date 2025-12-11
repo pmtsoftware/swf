@@ -19,6 +19,12 @@ import Webauthn.Database (userExists, queryCredentialEntryByCredential, insertUs
 import Webauthn.PendingCeremonies (insertPendingRegistration, getPendingRegistration, insertPendingAuthentication, getPendingAuthentication)
 import Data.Validation (Validation (Failure, Success))
 import System.Hourglass (dateCurrent)
+import Homepage (layoutM)
+
+import Text.Blaze.Html5
+import Text.Blaze.Html5.Attributes hiding (title, form, label, id)
+import qualified Text.Blaze.Html5.Attributes as Attr
+import Text.Blaze.Html.Renderer.Text
 
 data RegisterBeginReq = RegisterBeginReq
     { accountName :: Text
@@ -29,10 +35,37 @@ data RegisterBeginReq = RegisterBeginReq
 
 service :: ScottyT App ()
 service = do
+    Scotty.get  "/webauthn/register" register
     Scotty.post "/webauthn/register/begin" beginRegistration
     Scotty.post "/webauthn/register/complete" completeRegistration
+    Scotty.get  "/webauthn/login" login
     Scotty.post "/webauthn/login/begin" beginLogin
     Scotty.post "/webauthn/login/complete" completeLogin
+
+register :: Handler ()
+register = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        a ! href "/" $ "Back"
+        h1 "Register user"
+        form ! Attr.id "register" ! customAttribute "hx-disable" "true"  $ do
+            label $ do
+                "Email"
+                input ! required "required" ! name "email" ! type_ "email" ! value ""
+            input ! type_ "submit" ! value "Register"
+        script ! type_ "module" ! src "/static/webauthn/register.js" $ mempty
+
+login :: Handler ()
+login = do
+    layout <- layoutM
+    Scotty.html . renderHtml $ layout $ do
+        a ! href "/" $ "Back"
+        h1 "Login"
+        form $ do
+            label $ do
+                "Email"
+                input ! required "required" ! name "email" ! type_ "email" ! value ""
+            button ! Attr.id "login" $ "Login"
 
 -- | Utility function for debugging. Creates a human-readable bytestring from
 -- any value that can be encoded to JSON. We use this function to provide a log

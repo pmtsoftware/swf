@@ -8,6 +8,7 @@ import Common
 import Users
 import Homepage
 import Db
+import qualified Webauthn.Service as Webauthn
 
 import qualified Web.Scotty.Trans as Scotty
 
@@ -64,6 +65,7 @@ application = do
             Scotty.html $ renderHomepage checksum
         users
         auth
+        Webauthn.service
     where
         staticRoute = Scotty.regex "^/static/(.*)"
         sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."

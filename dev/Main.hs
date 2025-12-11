@@ -22,9 +22,12 @@ data DevEvent = AppBuild | FileChanged !Text
 -- we will use timestamp as client id (should be ok for local connections)
 type Clients = MVar [(SystemTime, Chan DevEvent)]
 
+startCmd :: String
+startCmd = "stack exec swf-exe -- app"
+
 main :: IO ()
 main = do
-    pd <- createProcess $ shell "stack exec swf-exe"
+    pd <- createProcess $ shell startCmd
     box <- newMVar pd
     output <- readCreateProcess (shell "stack path --local-install-root") ""
     let outs = lines $ toText output
@@ -50,7 +53,7 @@ watchAppExe dir box connsBox = withManager $ \mgr -> do
             putStrLn "Killing swf-exe..."
             cleanupProcess pd
             putStrLn "Starting swf-exe..."
-            pd' <- createProcess $ shell "stack exec swf-exe"
+            pd' <- createProcess $ shell startCmd
             _ <- putMVar box pd'
             conns <- takeMVar connsBox
             forM_ conns $ \(_, clientEvents) -> do
