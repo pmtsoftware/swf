@@ -23,6 +23,16 @@ import Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Base16 as Base16
 import Marker (pollMarkerJobResult)
 import Control.Concurrent (forkIO)
+import qualified Network.Wai.Middleware.BearerTokenAuth as Bearer
+import qualified Network.Wai.Middleware.Cors as Cors
+import Network.Wai.Middleware.HealthCheckEndpoint (healthCheck)
+import Network.Wai.Middleware.RequestLogger (logStdout)
+
+apiCors :: Cors.CorsResourcePolicy
+apiCors = Cors.simpleCorsResourcePolicy
+    { Cors.corsMethods = Cors.simpleMethods <> ["OPTIONS", "DELETE"]
+    , Cors.corsRequestHeaders = Cors.simpleHeaders <> ["Content-Type", "Authorization"]
+    }
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -48,25 +58,18 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
             $ Warp.defaultSettings
         webOpts = Scotty.defaultOptions { Scotty.settings = warpSettings }
     _ <- forkIO $ pollMarkerJobResult env
-    Scotty.scottyOptsT webOpts (runIO env) application
+    Scotty.scottyOptsT webOpts (runIO env) $ application cfg
 
 nop :: IO ()
 nop = return ()
 
-application :: ScottyT App ()
-application = do
-        Scotty.matchAny staticRoute sApp
-        Scotty.get "/" $ do
-            ensureSession
-            checksum <- lift $ asks cssChecksum
-            lift $ logInfoN "GET home page"
-            Scotty.html $ renderHomepage checksum
-        users
-        auth
-        Marker.service
-    where
-        staticRoute = Scotty.regex "^/static/(.*)"
-        sApp = Scotty.nested $ staticApp $ defaultWebAppSettings "."
+application :: AppConfig -> ScottyT App ()
+application AppConfig{..} = do
+    Scotty.middleware logStdout
+    Scotty.middleware healthCheck
+    Scotty.middleware $ Cors.cors (const (Just apiCors))
+    Scotty.middleware  $ Bearer.tokenListAuth [encodeUtf8 secret]
+    Marker.service
 
 buildCssChecksum :: IO ByteString
 buildCssChecksum = Base16.encode . hash <$> readFileBS "./static/swf.css"

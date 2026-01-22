@@ -18,6 +18,7 @@ data AppConfig = AppConfig
     , pgport     :: Int    -- PGPORT
     , pgdatabase :: Text   -- PGDATABASE
     , pguser     :: Text   -- PGUSER
+    , secret     :: Text   -- SECRET
     }
     deriving (Generic, Show)
 

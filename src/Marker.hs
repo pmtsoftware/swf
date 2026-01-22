@@ -35,43 +35,33 @@ import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
 import qualified Data.List.NonEmpty as NE
 import TextShow hiding (toString)
+import Network.HTTP.Types (status400)
 
 service :: ScottyT App ()
 service = do
-    Scotty.get "/marker/start" importForm
-    Scotty.post "/marker/start" $ do
+    Scotty.post "/api/marker/start" $ do
         files <- Scotty.files
         case files of
             [file] -> startImport file
-            _      -> Scotty.redirect "/marker/error"
+            _      -> do
+                Scotty.status status400
+                Scotty.text "Only one file allowed"
+    Scotty.get "/api/marker/job/:id/is-complete" isCompleteHandler
+    Scotty.get "/api/marker/job/:id/result" resultPage
 
-    Scotty.get "/marker/job/:id/status" statusPage
-    Scotty.get "/marker/job/:id/is-complete" isCompleteHandler
-    Scotty.get "/marker/job/:id/result" resultPage
-    Scotty.post "/marker/page/prev" prevPageHandler
-    Scotty.post "/marker/page/next" nextPageHandler
-    Scotty.post "/marker/refine" promptHandler
-    Scotty.get "/marker/is-refined" isRefinedHandler
-    Scotty.put "/marker/template" saveTemplateHandler
-    Scotty.get "/marker/error" errorPage
-
-importForm :: Handler ()
-importForm = do
-    layout <- layoutM
-    Scotty.html . renderHtml $ layout $ do
-        h1 "Import pdf"
-        form ! method "POST" ! enctype "multipart/form-data" $ do
-            label $ do
-                "File"
-                input ! required "required" ! name "file" ! type_ "file" ! accept ".pdf"
-            button ! type_ "submit" $ "Start"
+data StartResponse = StartResponse
+    { ok :: Bool
+    , reqId :: Maybe Int64
+    } deriving (Generic, Show)
+instance ToJSON StartResponse where
+    toEncoding = genericToEncoding defaultOptions
 
 startImport :: Scotty.File -> Handler ()
 startImport (_, FileInfo{..}) = do
     liftIO $ writeFileBS "urs.pdf" . fromLazy $ fileContent
     orderResult <- liftIO $ orderJob "urs.pdf"
     case orderResult of
-        Nothing -> Scotty.redirect "/marker/error"
+        Nothing -> Scotty.json $ StartResponse False Nothing
         Just OrderResult{..} -> do
             result <- queryDb stmt (requestId, requestCheckUrl, "" :: Text)
             case result of
@@ -86,7 +76,7 @@ startImport (_, FileInfo{..}) = do
         onSuccess jid = do
             box <- lift $ asks markerRequest
             liftIO $ putMVar box jid
-            Scotty.redirect $ "/marker/job/" <> showtl jid <> "/status"
+            Scotty.json $ StartResponse True (Just jid)
 
 promptHandler :: Handler ()
 promptHandler = do
@@ -113,34 +103,18 @@ saveTemplateHandler = do
     _ <- executeDb [sql| UPDATE prompt_templates SET prompt = ? WHERE id = 1; |] $ Only prompt
     Scotty.html . renderHtml $ mempty
 
-statusPage :: Handler ()
-statusPage = do
-    paramJobId <- Scotty.captureParam @Int64 "id"
-    layout <- layoutM
-    Scotty.html . renderHtml $ layout $ do
-        h1 "Processing"
-        div ! hx_get paramJobId ! hx_trigger ! hx_swap $ do
-            p "Please wait..."
-    where
-        hx_get jobId = customAttribute "hx-get" $ "/marker/job/" <> toValue (showtl jobId) <> "/is-complete"
-        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
-        hx_swap = customAttribute "hx-swap" "outerHTML"
+newtype CompleteStatus = CompleteStatus { completed :: Bool }
+    deriving (Generic, Show)
+instance ToJSON CompleteStatus where
+    toEncoding = genericToEncoding defaultOptions
 
 isCompleteHandler :: Handler ()
 isCompleteHandler = do
     paramJobId <- Scotty.captureParam @Int64 "id"
     [Only status] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT status FROM marker_requests WHERE id = ?; |] $ Only paramJobId
     case status of
-        "complete" -> Scotty.html. renderHtml $ do
-            p "Processing completed! "
-            a ! href ("/marker/job/" <> toValue (showtl paramJobId) <> "/result") $ "Open document"
-        _ -> Scotty.html . renderHtml $ do
-            div ! hx_get paramJobId ! hx_trigger ! hx_swap $ do
-                p "Please wait..."
-    where
-        hx_get jobId = customAttribute "hx-get" $ "/marker/job/" <> toValue (showtl jobId) <> "/is-complete"
-        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
-        hx_swap = customAttribute "hx-swap" "outerHTML"
+        "complete" -> Scotty.json $ CompleteStatus True
+        _ -> Scotty.json $ CompleteStatus False
 
 isRefinedHandler :: Handler ()
 isRefinedHandler = do
@@ -159,21 +133,10 @@ isRefinedHandler = do
 resultPage :: Handler ()
 resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
-    layout <- layoutM
-    [Only checkpointId] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT checkpoint_id FROM marker_requests WHERE id = ?; |] $ Only paramJobId
-    [Only total] <- queryDb @(Only Int64) @(Only Int) [sql| SELECT max(page_no) from marker_blocks where request_id = ?; |] $ Only paramJobId
-    [Only templ] <- queryDb_ [sql| SELECT prompt FROM prompt_templates WHERE id = 1; |]
-    docPage <- getSinglePage False paramJobId 1
-    Scotty.html . renderHtml $ layout $ do
-        div ! class_ "wrapper" $ do
-            div ! id "prompting"  $ promptForm paramJobId checkpointId templ
-            div $ do
-                navForm False total 1
-                docPage
-            div $ do
-                renderPoll False False
-                code ! id "logs" $ do
-                    p "Welcome! 🙋"
+    result <- queryDb @(Only Int64) @Block [sql|
+        SELECT blockid, html, block_type FROM marker_blocks WHERE request_id = ? ORDER BY blockid;
+    |] $ Only paramJobId
+    Scotty.json $ BlocksWrapper result
 
 getSinglePage :: Bool -> Int64 -> Int -> Handler Html
 getSinglePage oob jobId currentPage = do
@@ -182,10 +145,11 @@ getSinglePage oob jobId currentPage = do
     |] (jobId, currentPage)
     return $ div ! id "document" !? (oob, hx_oob) $ getContent result
 
-navForm :: Bool -> Int -> Int -> Html
-navForm oob total curr = form ! id "nav_form" !? (oob, customAttribute "hx_swap" "outerHTML") !? (oob, customAttribute "hx-swap-oob" "true") $ do
+navForm :: Bool -> Int -> Int -> Int64 -> Html
+navForm oob total curr jobId = form ! id "nav_form" !? (oob, customAttribute "hx_swap" "outerHTML") !? (oob, customAttribute "hx-swap-oob" "true") $ do
     input ! type_ "hidden" ! name "total_pages" ! value (toValue total)
     input ! type_ "hidden" ! name "page_no" ! value (toValue curr)
+    input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
     div $ do
         button ! customAttribute "hx-post" "/marker/page/prev" ! jobIdAttr !? (curr == 1, disabled "true") $ "Prev"
         span $ toMarkup $ "Page " <> showt curr <> " of " <> showt total
@@ -201,7 +165,7 @@ prevPageHandler = do
     let curr' = if curr > 0 then curr - 1 else 0
     docPage <- getSinglePage True jobId curr'
     Scotty.html . renderHtml $ do
-        navForm True total curr'
+        navForm True total curr' jobId
         docPage
 
 nextPageHandler :: Handler ()
@@ -212,7 +176,7 @@ nextPageHandler = do
     let curr' = if curr < total then curr + 1 else total 
     docPage <- getSinglePage True jobId curr'
     Scotty.html . renderHtml $ do
-        navForm True total curr'
+        navForm True total curr' jobId
         docPage
 
 getContent :: [(Text, Int)] -> Html
@@ -329,7 +293,7 @@ newtype PageOrder = PageOrder Int
 deriving newtype instance FromField PageOrder
 deriving newtype instance ToField PageOrder
 
-data BlocksWrapper = BlocksWrapper { blocks :: [Block] }
+newtype BlocksWrapper = BlocksWrapper { blocks :: [Block] }
     deriving (Generic, Show, Eq)
 
 instance FromJSON BlocksWrapper where
@@ -410,7 +374,7 @@ convert fp = do
         _ -> return $ Left ()
     where
         run :: OrderResult -> IO (Either Text JobResult)
-        run OrderResult{..} = poll 60 (getJobStatus requestCheckUrl) isProcFinished
+        run OrderResult{..} = poll 600 (getJobStatus requestCheckUrl) isProcFinished
 
 isProcFinished :: JobResult -> Bool
 isProcFinished JobResult{..} = markerStatus == "complete"
@@ -444,9 +408,8 @@ orderJob :: FilePath -> IO (Maybe OrderResult)
 orderJob fp = do
     let payload = [ partFile "file" fp
                   , partLBS "output_format" "chunks"
-                  , partLBS "use_llm" "false"
-                  , partLBS "save_checkpoint" "true"
-                  , partLBS "disable_image_extraction" "true"
+                  , partLBS "mode" "accurate"
+                  -- , partLBS "disable_image_extraction" "true"
                   ]
         url = T.unpack $ baseUrl <> "api/v1/marker"
     r <- asJSON @IO @OrderResult =<< postWith opts url payload

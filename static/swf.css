@@ -42,12 +42,11 @@ form {
 }
 
 .wrapper {
-    display: grid;
-    grid-template-columns: minmax(200px, 1fr) 960px;
-    grid-template-rows: 400px calc(100vh - 440px);
-    max-width: 1480px;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    max-width: 960px;
     margin: auto;
-    column-gap: 2em;
 
     table {
         table-layout: auto;

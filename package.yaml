@@ -72,6 +72,8 @@ library:
   - aeson
   - http-client
   - wai-extra
+  - wai-cors
+  - wai-middleware-bearer
 
 executables:
   swf-exe:
