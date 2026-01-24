@@ -16,7 +16,6 @@ module Marker
 where
 
 import Common
-import Homepage (layoutM)
 
 import Control.Lens hiding ((.=))
 import Data.Aeson hiding (Options)
@@ -28,13 +27,8 @@ import Control.Exception (try)
 import Network.HTTP.Client (HttpException(..))
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT)
-import Text.Blaze.Html5 hiding (object)
-import Text.Blaze.Html5.Attributes hiding (title, form, label, span)
-import Text.Blaze.Html.Renderer.Text
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
-import qualified Data.List.NonEmpty as NE
-import TextShow hiding (toString)
 import Network.HTTP.Types (status400)
 
 service :: ScottyT App ()
@@ -78,31 +72,6 @@ startImport (_, FileInfo{..}) = do
             liftIO $ putMVar box jid
             Scotty.json $ StartResponse True (Just jid)
 
-promptHandler :: Handler ()
-promptHandler = do
-    checkpointId <- Scotty.formParam @Text "checkpoint_id"
-    prompt <- Scotty.formParam @Text "prompt"
-    jobId <- Scotty.formParam @Int64 "job_id"
-    r <- liftIO $ runPrompt checkpointId prompt
-    case r of
-        Nothing -> Scotty.redirect "/marker/error"
-        Just OrderResult{..} -> do
-            _ <- executeDb [sql| UPDATE marker_requests SET request_check_url = ?, status = '' WHERE id = ?; |] (requestCheckUrl, jobId)
-            _ <- executeDb [sql| insert into prompt_history (prompt, request_id) values (?, ?); |] (prompt, jobId)
-            box <- lift $ asks markerRequest
-            liftIO $ putMVar box jobId
-            Scotty.html . renderHtml $ do
-                renderPoll True True
-                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p (toMarkup prompt)
-                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p "💡 Processing..."
-
-
-saveTemplateHandler :: Handler ()
-saveTemplateHandler = do
-    prompt <- Scotty.formParam @Text "prompt"
-    _ <- executeDb [sql| UPDATE prompt_templates SET prompt = ? WHERE id = 1; |] $ Only prompt
-    Scotty.html . renderHtml $ mempty
-
 newtype CompleteStatus = CompleteStatus { completed :: Bool }
     deriving (Generic, Show)
 instance ToJSON CompleteStatus where
@@ -116,125 +85,14 @@ isCompleteHandler = do
         "complete" -> Scotty.json $ CompleteStatus True
         _ -> Scotty.json $ CompleteStatus False
 
-isRefinedHandler :: Handler ()
-isRefinedHandler = do
-    paramJobId <- Scotty.queryParam @Int64 "job_id"
-    curr <- Scotty.queryParam @Int "page_no"
-    [Only status] <- queryDb @(Only Int64) @(Only Text) [sql| SELECT status FROM marker_requests WHERE id = ?; |] $ Only paramJobId
-    case status of
-        "complete" -> do
-            docPage <- getSinglePage True paramJobId curr
-            Scotty.html . renderHtml $ do
-                docPage
-                renderPoll False False
-                div ! customAttribute "hx-swap-oob" "beforeend:#logs" $ p "✅ Done"
-        _ -> Scotty.html . renderHtml $ renderPoll True False
 
 resultPage :: Handler ()
 resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
-    result <- queryDb @(Only Int64) @Block [sql|
-        SELECT blockid, html, block_type FROM marker_blocks WHERE request_id = ? ORDER BY blockid;
+    result <- queryDb @(Only Int64) @Chunk [sql|
+        SELECT blockid, html, block_type, page_no, page_order FROM marker_blocks WHERE request_id = ? ORDER BY page_no, page_order;
     |] $ Only paramJobId
-    Scotty.json $ BlocksWrapper result
-
-getSinglePage :: Bool -> Int64 -> Int -> Handler Html
-getSinglePage oob jobId currentPage = do
-    result <- queryDb [sql|
-        SELECT html, page_no FROM marker_blocks WHERE request_id = ? AND page_no = ? AND block_type <> 'Picture' ORDER BY page_no, page_order;
-    |] (jobId, currentPage)
-    return $ div ! id "document" !? (oob, hx_oob) $ getContent result
-
-navForm :: Bool -> Int -> Int -> Int64 -> Html
-navForm oob total curr jobId = form ! id "nav_form" !? (oob, customAttribute "hx_swap" "outerHTML") !? (oob, customAttribute "hx-swap-oob" "true") $ do
-    input ! type_ "hidden" ! name "total_pages" ! value (toValue total)
-    input ! type_ "hidden" ! name "page_no" ! value (toValue curr)
-    input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
-    div $ do
-        button ! customAttribute "hx-post" "/marker/page/prev" ! jobIdAttr !? (curr == 1, disabled "true") $ "Prev"
-        span $ toMarkup $ "Page " <> showt curr <> " of " <> showt total
-        button ! customAttribute "hx-post" "/marker/page/next" ! jobIdAttr !? (curr == total, disabled "true") $ "Next"
-    where
-        jobIdAttr = customAttribute "hx-include" "[name='job_id']"
-
-prevPageHandler :: Handler ()
-prevPageHandler = do
-    total <- Scotty.formParam @Int "total_pages"
-    curr <- Scotty.formParam @Int "page_no"
-    jobId <- Scotty.formParam @Int64 "job_id"
-    let curr' = if curr > 0 then curr - 1 else 0
-    docPage <- getSinglePage True jobId curr'
-    Scotty.html . renderHtml $ do
-        navForm True total curr' jobId
-        docPage
-
-nextPageHandler :: Handler ()
-nextPageHandler = do
-    total <- Scotty.formParam @Int "total_pages"
-    curr <- Scotty.formParam @Int "page_no"
-    jobId <- Scotty.formParam @Int64 "job_id"
-    let curr' = if curr < total then curr + 1 else total 
-    docPage <- getSinglePage True jobId curr'
-    Scotty.html . renderHtml $ do
-        navForm True total curr' jobId
-        docPage
-
-getContent :: [(Text, Int)] -> Html
-getContent = renderPages . NE.groupWith snd
-
-renderPoll :: Bool -> Bool -> Html
-renderPoll active oob
-    | not active && not oob = div ! id "poll" $ mempty
-    | not active && oob     = div ! id "poll" ! hx_oob $ mempty
-    | active && not oob     = div ! id "poll" ! hx_get ! hx_include ! hx_trigger ! hx_swap $ mempty
-    | active && oob         = div ! id "poll" ! hx_get ! hx_include ! hx_trigger ! hx_swap ! hx_oob $ mempty
-    | otherwise             = div ! id "poll" $ mempty
-    where
-        hx_get = customAttribute "hx-get" "/marker/is-refined"
-        hx_trigger = customAttribute "hx-trigger" "load delay:1s"
-        hx_swap = customAttribute "hx-swap" "outerHTML"
-        hx_include = customAttribute "hx-include" "[name='job_id'], [name='page_no']"
-
-hx_oob :: Attribute
-hx_oob = customAttribute "hx-swap-oob" "true"
-
-renderPages :: [NonEmpty (Text, Int)] -> Html
-renderPages = mconcat . fmap renderPage
-
-renderPage :: NonEmpty (Text, Int) -> Html
-renderPage sections = article $ do
-    let pageNo = snd . NE.head $ sections
-    -- header $ small $ text ("Page " <> showt pageNo)
-    mapM_ preEscapedToHtml $ fmap fst sections
-    footer $ small $  text ("Page " <> showt pageNo)
-
-promptForm :: Int64 -> Text -> Text -> Html
-promptForm jobId checkpointId defaultPrompt = form ! customAttribute "hx-post" "/marker/refine" ! customAttribute "hx-swap" "none" $ do
-    input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
-    input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
-    label $ do
-        "Prompt"
-        textarea ! name "prompt" $ text defaultPrompt
-    section $ do
-        button ! type_ "submit" $ "Run"
-        button ! customAttribute "hx-put" "/marker/template" ! customAttribute "hx-swap" "none" $ "Save as template"
-
-
--- TODO: to remove probably
--- innerPromptForm :: Int64 -> Text -> Html
--- innerPromptForm jobId checkpointId = do
---     input ! type_ "hidden" ! name "checkpoint_id" ! value (toValue checkpointId)
---     input ! type_ "hidden" ! name "job_id" ! value (toValue jobId)
---     label $ do
---         "Prompt"
---         textarea ! name "prompt" $ text ""
---     button ! type_ "submit" $ "Post"
-
-errorPage :: Handler ()
-errorPage = do
-    layout <- layoutM
-    Scotty.html . renderHtml $ layout $ do
-        h1 "Error occured!"
+    Scotty.json $ ChunksWrapper result
 
 type Converter = FilePath -> IO (Either () JobResult)
 
@@ -305,15 +163,40 @@ instance ToJSON BlocksWrapper where
             [ "blocks" .= blocks
             ]
 
+newtype ChunksWrapper = ChunksWrapper { chunksList :: [Chunk] }
+    deriving (Generic, Show, Eq)
+instance ToJSON ChunksWrapper where
+    toJSON (ChunksWrapper{..}) =
+        object
+            [ "blocks" .= chunksList
+            ]
+
+data Chunk = Chunk
+    { chunkId :: Text
+    , chunkContent :: Text
+    , chunkType :: Text
+    , chunkPage :: Int
+    , chunkOrder :: Int
+    } deriving (Generic, Show, Eq)
+instance FromRow Chunk where
+    fromRow = Chunk <$> field <*> field <*> field <*> field <*> field
+instance ToJSON Chunk where
+    toJSON (Chunk{..}) =
+        object
+            [ "id" .= chunkId
+            , "html" .= chunkContent
+            , "block_type" .= chunkType
+			, "page" .= chunkPage
+			, "order" .= chunkOrder
+            ]
+
 data Block = Block
     { blockId :: Text
     , html :: Text
     , blockType :: Text
     } deriving (Generic, Show, Eq, ToRow)
-
 instance FromRow Block where
     fromRow = Block <$> field <*> field <*> field
-
 instance FromJSON Block where
     parseJSON = withObject "HealthResponse" $ \v -> Block
         <$> v .: "id"
