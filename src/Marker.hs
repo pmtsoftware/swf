@@ -12,6 +12,7 @@ module Marker
     , service
     , pollMarkerJobResult
     , parsePageNoAndOrder
+    , test
     )
 where
 
@@ -30,6 +31,7 @@ import Web.Scotty.Trans (ScottyT)
 import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Network.Wai.Parse (FileInfo (..))
 import Network.HTTP.Types (status400)
+import qualified Data.Map.Strict as Map
 
 service :: ScottyT App ()
 service = do
@@ -125,6 +127,7 @@ data JobResult = JobResult
     , markerSuccess :: Maybe Bool
     , pageCount :: Maybe Int
     , checkpointId :: Maybe Text
+    , images :: Map Text Text
     } deriving (Generic, Show, Eq)
 
 instance FromJSON JobResult where
@@ -135,6 +138,7 @@ instance FromJSON JobResult where
         <*> v .: "success"
         <*> v .: "page_count"
         <*> v .:? "checkpoint_id"
+        <*> v .: "images"
 instance ToJSON JobResult where
     toJSON (JobResult{..}) =
         object
@@ -186,15 +190,15 @@ instance ToJSON Chunk where
             [ "id" .= chunkId
             , "html" .= chunkContent
             , "block_type" .= chunkType
-			, "page" .= chunkPage
-			, "order" .= chunkOrder
+            , "page" .= chunkPage
+            , "order" .= chunkOrder
             ]
 
 data Block = Block
     { blockId :: Text
     , html :: Text
     , blockType :: Text
-    } deriving (Generic, Show, Eq, ToRow)
+    } deriving (Generic, Show, Eq)
 instance FromRow Block where
     fromRow = Block <$> field <*> field <*> field
 instance FromJSON Block where
@@ -328,11 +332,13 @@ pollMarkerJobResult AppEnv{..} = forever $ do
     putStrLn " Start polling"
     result <- poll 60 (getJobStatus jobRequestCheckUrl) isProcFinished
     case result of
-        Right JobResult{..} -> when (markerStatus == "complete") $ do
+        Right jr@JobResult{..} -> when (markerStatus == "complete") $ do
             putStrLn "Polling finshed successfully"
+            writeFileBS "output.json" $ fromLazy (encode jr)
             saveStatusComplete connPool jobId
             whenJust checkpointId $ saveCheckpointId connPool jobId
             storeChunks connPool jobId $ maybe [] blocks chunks
+            storeImages connPool jobId images
             return ()
         Left _ -> putStrLn "Polling failed"
     return ()
@@ -369,6 +375,19 @@ storeChunks pool jobId blocks = do
         defOrder :: PageOrder
         defOrder = PageOrder 0
 
+storeImages :: Pool Connection -> Int64 -> Map Text Text -> IO ()
+storeImages pool jobId imgs = do
+    withResource pool $ \conn -> do
+        -- delete previous chunks
+        _ <- execute conn [sql| DELETE FROM marker_images WHERE request_id = ?; |] $ Only jobId
+        _ <- executeMany conn [sql|
+            INSERT INTO marker_images (request_id, name, content) VALUES (?, ?, ?);
+        |] $ toRow jobId <$> Map.toList imgs
+        return ()
+    where
+        toRow :: Int64 -> (Text, Text) -> (Int64, Text, Text)
+        toRow jid (k, v) = (jid, k, v)
+
 parsePageNoAndOrder :: Text -> (Maybe Int, Maybe PageOrder)
 parsePageNoAndOrder x = bimap (fmap (+1) . convert') (fmap PageOrder . convert') $ getPageAndOrder chunks
     where
@@ -376,3 +395,13 @@ parsePageNoAndOrder x = bimap (fmap (+1) . convert') (fmap PageOrder . convert')
         chunks = T.split (=='/') x
         getPageAndOrder [_, _, page, _, order] = (page, order)
         getPageAndOrder _ = ("", "")
+
+test :: IO ()
+test = do
+    bs <- readFileBS "tmp.json"
+    let jr = decodeStrict @JobResult bs
+    whenJust jr $ \(JobResult{..}) -> do
+        putStrLn "We've got something"
+        forM_ (Map.toList images) $ \(k, v) -> do
+            putStrLn $ "File: " <> toString k
+    return ()
