@@ -65,7 +65,7 @@ nop = return ()
 
 application :: AppConfig -> ScottyT App ()
 application AppConfig{..} = do
-    Scotty.middleware logStdout
+    -- Scotty.middleware logStdout
     Scotty.middleware healthCheck
     Scotty.middleware $ Cors.cors (const (Just apiCors))
     Scotty.middleware  $ Bearer.tokenListAuth [encodeUtf8 secret]

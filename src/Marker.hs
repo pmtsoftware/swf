@@ -91,10 +91,13 @@ isCompleteHandler = do
 resultPage :: Handler ()
 resultPage = do
     paramJobId <- Scotty.captureParam @Int64 "id"
-    result <- queryDb @(Only Int64) @Chunk [sql|
+    chunks <- queryDb @(Only Int64) @Chunk [sql|
         SELECT blockid, html, block_type, page_no, page_order FROM marker_blocks WHERE request_id = ? ORDER BY page_no, page_order;
     |] $ Only paramJobId
-    Scotty.json $ ChunksWrapper result
+    images <- queryDb @(Only Int64) @Image [sql|
+        SELECT name, content FROM marker_images WHERE request_id = ?;
+    |] $ Only paramJobId
+    Scotty.json $ ChunksWrapper chunks images
 
 type Converter = FilePath -> IO (Either () JobResult)
 
@@ -167,12 +170,29 @@ instance ToJSON BlocksWrapper where
             [ "blocks" .= blocks
             ]
 
-newtype ChunksWrapper = ChunksWrapper { chunksList :: [Chunk] }
+data Image = Image
+    { imgName :: Text
+    , imgContent :: Text
+    } deriving (Eq, Show, Generic)
+instance FromRow Image where
+    fromRow = Image <$> field <*> field
+instance ToJSON Image where
+    toJSON (Image{..}) =
+        object
+            [ "name" .= imgName
+            , "content" .= imgContent
+            ]
+
+data ChunksWrapper = ChunksWrapper
+    { chunksList :: [Chunk]
+    , imagesList :: [Image]
+    }
     deriving (Generic, Show, Eq)
 instance ToJSON ChunksWrapper where
     toJSON (ChunksWrapper{..}) =
         object
             [ "blocks" .= chunksList
+            , "images" .= imagesList
             ]
 
 data Chunk = Chunk
@@ -334,7 +354,7 @@ pollMarkerJobResult AppEnv{..} = forever $ do
     case result of
         Right jr@JobResult{..} -> when (markerStatus == "complete") $ do
             putStrLn "Polling finshed successfully"
-            writeFileBS "output.json" $ fromLazy (encode jr)
+            -- writeFileBS "output.json" $ fromLazy (encode jr)
             saveStatusComplete connPool jobId
             whenJust checkpointId $ saveCheckpointId connPool jobId
             storeChunks connPool jobId $ maybe [] blocks chunks
