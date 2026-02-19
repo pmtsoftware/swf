@@ -12,7 +12,6 @@ module Marker
     , service
     , pollMarkerJobResult
     , parsePageNoAndOrder
-    , test
     )
 where
 
@@ -130,7 +129,7 @@ data JobResult = JobResult
     , markerSuccess :: Maybe Bool
     , pageCount :: Maybe Int
     , checkpointId :: Maybe Text
-    , images :: Map Text Text
+    , images :: Maybe (Map Text Text)
     } deriving (Generic, Show, Eq)
 
 instance FromJSON JobResult where
@@ -141,7 +140,7 @@ instance FromJSON JobResult where
         <*> v .: "success"
         <*> v .: "page_count"
         <*> v .:? "checkpoint_id"
-        <*> v .: "images"
+        <*> v .:? "images"
 instance ToJSON JobResult where
     toJSON (JobResult{..}) =
         object
@@ -358,7 +357,7 @@ pollMarkerJobResult AppEnv{..} = forever $ do
             saveStatusComplete connPool jobId
             whenJust checkpointId $ saveCheckpointId connPool jobId
             storeChunks connPool jobId $ maybe [] blocks chunks
-            storeImages connPool jobId images
+            storeImages connPool jobId $ fromMaybe Map.empty images
             return ()
         Left _ -> putStrLn "Polling failed"
     return ()
@@ -416,12 +415,3 @@ parsePageNoAndOrder x = bimap (fmap (+1) . convert') (fmap PageOrder . convert')
         getPageAndOrder [_, _, page, _, order] = (page, order)
         getPageAndOrder _ = ("", "")
 
-test :: IO ()
-test = do
-    bs <- readFileBS "tmp.json"
-    let jr = decodeStrict @JobResult bs
-    whenJust jr $ \(JobResult{..}) -> do
-        putStrLn "We've got something"
-        forM_ (Map.toList images) $ \(k, v) -> do
-            putStrLn $ "File: " <> toString k
-    return ()
