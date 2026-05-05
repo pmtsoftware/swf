@@ -4,8 +4,7 @@ import Test.Tasty
 import Test.Tasty.Hspec
 import Test.Hspec
 
-import qualified Network.Wreq as Wreq
-import Control.Lens
+import Network.HTTP.Req
 
 import App
 import Config
@@ -24,10 +23,11 @@ main = do
 
 spec_hello_world :: AppConfig -> Spec
 spec_hello_world AppConfig{..} = do
-    let rootUrl = "http://" <> appHost <> ":" <> show appPort <> "/"
+    let url = http appHost
+        urlOpts = port appPort
     describe "Homepage" $ do
-        r <- runIO $ Wreq.get (toString rootUrl)
+        r <- runIO $ runReq defaultHttpConfig $ req GET url NoReqBody bsResponse urlOpts
         it "simple GET returns 200" $ do
-            r ^. Wreq.responseStatus . Wreq.statusCode `shouldBe` 200
+            responseStatusCode r `shouldBe` 200
         it "Content-Type is html" $
-            r ^. Wreq.responseHeader "Content-Type" `shouldBe` "text/html; charset=utf-8"
+            responseHeader r "Content-Type" `shouldBe` Just "text/html; charset=utf-8"

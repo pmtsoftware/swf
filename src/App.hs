@@ -22,7 +22,7 @@ import Session (auth, ensureSession)
 import Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Base16 as Base16
 import Marker (pollMarkerJobResult)
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, newChan)
 import qualified Network.Wai.Middleware.BearerTokenAuth as Bearer
 import qualified Network.Wai.Middleware.Cors as Cors
 import Network.Wai.Middleware.HealthCheckEndpoint (healthCheck)
@@ -51,8 +51,8 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     _ <- withResource pool migrateDb
     key <- getDefaultKey
     cssChecksum <- buildCssChecksum
-    markerMVar <- newEmptyMVar
-    let env = AppEnv cfg pool key cssChecksum markerMVar
+    fifo <- newChan
+    let env = AppEnv cfg pool key cssChecksum fifo
         warpSettings = Warp.setPort appPort
             . Warp.setBeforeMainLoop beforeMainLoop
             $ Warp.defaultSettings

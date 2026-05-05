@@ -18,4 +18,5 @@ migrateDb conn = runMigrations conn defaultOptions
     , MigrationFile "prompt.sql" "./migrations/prompt.sql"
     , MigrationFile "marker_images.sql" "./migrations/marker_images.sql"
     , MigrationFile "marker_images_rename.sql" "./migrations/marker_images_rename.sql"
+    , MigrationFile "marker_file_type_response.sql" "./migrations/marker_file_type_response.sql"
     ]

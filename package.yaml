@@ -67,8 +67,8 @@ library:
   - cereal-text
   - cryptohash-sha1
   - base16-bytestring
-  - wreq
-  - lens
+  - req
+  - modern-uri
   - aeson
   - http-client
   - wai-extra
@@ -113,5 +113,4 @@ tests:
     - tasty
     - tasty-hspec
     - hspec
-    - wreq
-    - lens
+    - req

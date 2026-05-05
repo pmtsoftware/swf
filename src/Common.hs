@@ -26,7 +26,7 @@ import Database.PostgreSQL.Simple.SqlQQ
 import Database.PostgreSQL.Simple.FromField (FromField (fromField))
 import Database.PostgreSQL.Simple.ToField (ToField (toField))
 import Data.Pool
-import UnliftIO (MonadUnliftIO)
+import UnliftIO (MonadUnliftIO, Chan)
 import Control.Monad.Logger (LoggingT, MonadLogger)
 import Web.ClientSession (Key)
 import Web.Scotty.Trans (ActionT)
@@ -36,7 +36,7 @@ data AppEnv = AppEnv
     , connPool :: Pool Connection
     , sessionKey :: Key
     , cssChecksum :: ByteString
-    , markerRequest :: MVar Int64
+    , markerFifo :: Chan Int64
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
