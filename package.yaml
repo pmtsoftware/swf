@@ -47,6 +47,7 @@ ghc-options:
 library:
   source-dirs: src
   dependencies:
+  - wai
   - warp
   - unliftio
   - scotty

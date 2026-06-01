@@ -11,3 +11,6 @@ Simple Web Framework
 - [ ] try `servant` as library to endpoint implementation
 - [ ] swap water.css with matcha.css which is more modern css library
 - [ ] replace water css library with matcha css
+- [ ] replace postgresql-simple with hasql
+
+- [ ] multitenant app with row level security - in app SET LOCAL ROLE ?: SET LOCAL app.user_id = ?; --QUERY--; 

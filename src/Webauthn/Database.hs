@@ -26,7 +26,7 @@ module Webauthn.Database
 import Relude
 
 import Codec.Serialise (deserialiseOrFail, serialise)
-import Control.Exception (throwIO)
+import Control.Exception (throwIO, catch)
 import Crypto.Random (MonadRandom, getRandomBytes)
 import qualified Crypto.WebAuthn as WA
 import qualified Data.ByteString as BS
@@ -35,9 +35,11 @@ import Data.ByteString.Char8 (unpack)
 import Database.PostgreSQL.Simple hiding (fold)
 import Database.PostgreSQL.Simple.SqlQQ
 import Database.PostgreSQL.Simple.FromField
+import qualified Database.PostgreSQL.Simple.Types as SQL
 import Data.Attoparsec.ByteString
 import Data.Attoparsec.ByteString.Char8 (signed, decimal)
 import Types
+import Network.HTTP.Client.TLS (displayDigestAuthException)
 
 instance FromField Word32 where
     fromField f Nothing = returnError UnexpectedNull f ""
@@ -54,20 +56,21 @@ insertUser ::
     WA.CredentialUserEntity ->
     IO Int64
 insertUser conn user =
-  let WA.CredentialUserEntity
-        { WA.cueId = WA.UserHandle handle,
-          WA.cueName = WA.UserAccountName accountName,
-          WA.cueDisplayName = WA.UserAccountDisplayName accountDisplayName
-        } = user
-   in execute
+    let WA.CredentialUserEntity
+            { WA.cueId = WA.UserHandle handle,
+              WA.cueName = WA.UserAccountName accountName,
+              WA.cueDisplayName = WA.UserAccountDisplayName accountDisplayName
+            } = user
+        binaryHandle = SQL.Binary handle
+    in execute
         conn
-        [sql| INSERT INTO users (handle, email, display_name) VALUES (?, ?, ?); |]
-        (handle, accountName, accountDisplayName)
+        [sql| INSERT INTO users (handle, email, display_name, password) VALUES (?, ?, ?, ''); |]
+        (binaryHandle, accountName, accountDisplayName)
 
 -- | Check if a user exists in the database
 userExists :: Connection -> WA.UserAccountName -> IO Bool
 userExists conn (WA.UserAccountName accountName) = do
-  results :: [Only Text] <- query conn [sql| SELECT email FROM users WHERE account_name = ?; |] $ Only accountName
+  results :: [Only Text] <- query conn [sql| SELECT email FROM users WHERE email = ?; |] $ Only accountName
   pure $ not $ null results
 
 -- | Inserts a new credential entry into the database. The example server's
@@ -78,36 +81,47 @@ insertCredentialEntry ::
     WA.CredentialEntry ->
     IO Int64
 insertCredentialEntry
-  conn
-  WA.CredentialEntry
-    { WA.ceUserHandle = WA.UserHandle userHandle,
-      WA.ceCredentialId = WA.CredentialId credentialId,
-      WA.cePublicKeyBytes = WA.PublicKeyBytes publicKey,
-      WA.ceSignCounter = WA.SignatureCounter signCounter,
-      WA.ceTransports = encodeTransports -> transports
-    } =
+    conn
+    WA.CredentialEntry
+        { WA.ceUserHandle = WA.UserHandle userHandle,
+        WA.ceCredentialId = WA.CredentialId credentialId,
+        WA.cePublicKeyBytes = WA.PublicKeyBytes publicKey,
+        WA.ceSignCounter = WA.SignatureCounter signCounter,
+        WA.ceTransports = encodeTransports -> transports
+        } =
     do
-      execute
-        conn
-        [sql| INSERT INTO credential_entries (credential_id, user_handle, public_key, sign_counter, transports) VALUES (?, ?, ?, ?, ?); |]
-        ( credentialId,
-          userHandle,
-          publicKey,
-          signCounter,
-          transports
-        )
+        let binaryCredId = SQL.Binary credentialId
+            binaryUserHandle = SQL.Binary userHandle
+            binaryPubKey = SQL.Binary publicKey
+            binaryTransports = SQL.Binary transports
+        execute
+            conn
+            [sql| 
+                INSERT INTO credential_entries (credential_id, user_handle, public_key, sign_counter, transports, created_at)
+                VALUES (?, ?, ?, ?, ?, transaction_timestamp());
+            |]
+            ( binaryCredId,
+              binaryUserHandle,
+              binaryPubKey,
+              signCounter,
+              binaryTransports
+            )
 
 -- | Find a credential entry in the database
 queryCredentialEntryByCredential :: Connection -> WA.CredentialId -> IO (Maybe WA.CredentialEntry)
 queryCredentialEntryByCredential conn (WA.CredentialId credentialId) = do
+    let binaryCredId = SQL.Binary credentialId
+    catch @SomeException (formatQuery conn sqlStmt (Only binaryCredId) >>= print) $ \exc -> putStrLn (displayException exc)
     entries <- query
         conn
-        [sql| SELECT credential_id, user_handle, public_key, sign_counter, transports FROM credential_entries WHERE credential_id = ?; |]
-        (Only credentialId)
+        sqlStmt
+            (Only binaryCredId)
     case entries of
         [] -> pure Nothing
         [entry] -> Just <$> toCredentialEntry entry
         _ -> fail "Unreachable: credential_entries.credential_id has a unique index."
+    where
+        sqlStmt = [sql| SELECT credential_id, user_handle, public_key, sign_counter, transports FROM credential_entries WHERE credential_id = ?; |]
 
 -- | Retrieve the credential entries belonging to the specified user. In
 -- reality, the logic of the server doesn't actually allow a single user to
@@ -117,10 +131,10 @@ queryCredentialEntriesByUser conn (WA.UserAccountName accountName) = do
     entries <- query
         conn
         [sql|
-            SELECT credential_id, user_handle, public_key, sign_counter, transports
-            FROM credential_entries 
-            JOIN users on users.handle = credential_entries.user_handle 
-            WHERE account_name = ?;
+            SELECT c.credential_id, c.user_handle, c.public_key, c.sign_counter, c.transports
+            FROM credential_entries AS c 
+            JOIN users AS u on u.handle = c.user_handle 
+            WHERE u.email = ?;
         |]
         (Only accountName)
     traverse toCredentialEntry entries
@@ -128,11 +142,12 @@ queryCredentialEntriesByUser conn (WA.UserAccountName accountName) = do
 -- | Set the new signature counter for the specified credential. Used to check
 -- if the authenticator wasn't cloned.
 updateSignatureCounter :: Connection -> WA.CredentialId -> WA.SignatureCounter -> IO Int64
-updateSignatureCounter conn (WA.CredentialId credentialId) (WA.SignatureCounter counter) =
+updateSignatureCounter conn (WA.CredentialId credentialId) (WA.SignatureCounter counter) = do
+    let binaryCredId = SQL.Binary credentialId
     execute
         conn
         [sql| UPDATE credential_entries SET sign_counter = ? WHERE credential_id = ?; |]
-        (counter, credentialId)
+        (counter, binaryCredId)
 
 -- | Encodes a list of 'WA.AuthenticatorTransport' into a 'BS.ByteString' using
 -- CBOR format. Use 'decodeTransports' to inverse this operation. This is only

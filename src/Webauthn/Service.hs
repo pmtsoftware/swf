@@ -3,6 +3,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 
 module Webauthn.Service (service) where
 
@@ -61,11 +62,12 @@ login = do
     Scotty.html . renderHtml $ layout $ do
         a ! href "/" $ "Back"
         h1 "Login"
-        form $ do
+        form ! Attr.id "login" $ do
             label $ do
                 "Email"
                 input ! required "required" ! name "email" ! type_ "email" ! value ""
-            button ! Attr.id "login" $ "Login"
+            button ! type_ "submit" $ "Login"
+        script ! type_ "module" ! src "/static/webauthn/login.js" $ mempty
 
 -- | Utility function for debugging. Creates a human-readable bytestring from
 -- any value that can be encoded to JSON. We use this function to provide a log
@@ -135,7 +137,8 @@ defaultPkcco userEntity challenge =
             , WA.ascResidentKey = WA.ResidentKeyRequirementDiscouraged
             , WA.ascUserVerification = WA.UserVerificationRequirementPreferred
             }
-    , WA.corAttestation = WA.AttestationConveyancePreferenceDirect
+    -- , WA.corAttestation = WA.AttestationConveyancePreferenceDirect
+    , WA.corAttestation = WA.AttestationConveyancePreferenceNone
     , WA.corExtensions = Nothing
     }
 
@@ -178,15 +181,19 @@ completeRegistration = do
     Scotty.liftAndCatchIO $ TIO.putStrLn $ "Register complete result: " <> jsonText result
     -- if the credential was succesfully attested, we will see if the
     -- credential doesn't exist yet, and if it doesn't, insert it.
-    Scotty.liftAndCatchIO $
+    -- Scotty.liftAndCatchIO $
+    liftIO $
         withResource connPool $ \conn -> do
             -- If a credential with this id existed already, it must belong to the
             -- current user, otherwise it's an error. The spec allows removing the
             -- credential from the old user instead, but we don't do that.
+
             mexistingEntry <- queryCredentialEntryByCredential conn (WA.ceCredentialId $ WA.rrEntry result)
             case mexistingEntry of
                 Nothing -> do
+                    putStrLn "Creating user"
                     _ <- insertUser conn $ WA.corUser options
+                    putStrLn "Creating cred"
                     _ <- insertCredentialEntry conn $ WA.rrEntry result
                     pure ()
                 Just existingEntry | userHandle == WA.ceUserHandle existingEntry -> pure ()
