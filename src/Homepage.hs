@@ -11,6 +11,7 @@ renderHomepage cssSha = renderHtml . layout cssSha $ do
     h1 "Hello world app"
     p "Welcome in our new web app when live reloading almost works!"
     button "Example button"
+    a ! href "/webauthn/register" $ button "Register"
 
 layout :: ByteString -> Html -> Html
 layout cssChecksum innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do

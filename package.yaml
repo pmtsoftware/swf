@@ -47,6 +47,7 @@ ghc-options:
 library:
   source-dirs: src
   dependencies:
+  - wai
   - warp
   - unliftio
   - scotty
@@ -67,6 +68,25 @@ library:
   - base16-bytestring
   - fmt
   - validation
+  - webauthn
+  - serialise
+  - crypton
+  - attoparsec
+  - bytestring
+  - stm
+  - binary
+  - clock
+  - containers
+  - aeson
+  - these
+  - hourglass
+  - http-client
+  - http-client-tls
+  - http-types
+  - cookie
+  - text
+  - base64-bytestring
+  - aeson-pretty
 
 executables:
   swf-exe:

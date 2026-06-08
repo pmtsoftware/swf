@@ -12,4 +12,6 @@ migrateDb conn = runMigrations conn defaultOptions
     [ MigrationInitialization
     , MigrationFile "users.sql" "./migrations/users.sql"
     , MigrationFile "email_unique.sql" "./migrations/email_unique.sql"
+    , MigrationFile "webauthn.sql" "./migrations/webauthn.sql"
+    , MigrationFile "credential_user_handle.sql" "./migrations/credential_user_handle.sql"
     ]
