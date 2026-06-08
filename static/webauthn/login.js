@@ -33,7 +33,7 @@ if (window.login) {
                 credentials: "include"
             });
             if (!completeResponse.ok) {
-                console.error(await response.text())
+                console.error(await completeResponse.text())
                 return
             }
 

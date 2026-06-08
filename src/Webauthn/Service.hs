@@ -142,9 +142,6 @@ defaultPkcco userEntity challenge =
     , WA.corExtensions = Nothing
     }
 
-origin :: WA.Origin
-origin = "http://localhost:3001"
-
 -- | Completes the relying party's responsibilities of the registration
 -- ceremony. Receives the credential from the client and performs the
 -- [registration operation](https://www.w3.org/TR/webauthn-2/#sctn-registering-a-new-credential).
@@ -183,10 +180,12 @@ completeRegistration = do
     -- credential doesn't exist yet, and if it doesn't, insert it.
     -- Scotty.liftAndCatchIO $
     liftIO $
-        withResource connPool $ \conn -> do
+        withResource connPool $ \conn -> withTransaction conn $ do
             -- If a credential with this id existed already, it must belong to the
             -- current user, otherwise it's an error. The spec allows removing the
             -- credential from the old user instead, but we don't do that.
+            -- The lookup and the inserts share one transaction so the user and its
+            -- credential are committed together (or not at all).
 
             mexistingEntry <- queryCredentialEntryByCredential conn (WA.ceCredentialId $ WA.rrEntry result)
             case mexistingEntry of

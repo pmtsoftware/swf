@@ -26,7 +26,7 @@ module Webauthn.Database
 import Relude
 
 import Codec.Serialise (deserialiseOrFail, serialise)
-import Control.Exception (throwIO, catch)
+import Control.Exception (throwIO)
 import Crypto.Random (MonadRandom, getRandomBytes)
 import qualified Crypto.WebAuthn as WA
 import qualified Data.ByteString as BS
@@ -39,7 +39,6 @@ import qualified Database.PostgreSQL.Simple.Types as SQL
 import Data.Attoparsec.ByteString
 import Data.Attoparsec.ByteString.Char8 (signed, decimal)
 import Types
-import Network.HTTP.Client.TLS (displayDigestAuthException)
 
 instance FromField Word32 where
     fromField f Nothing = returnError UnexpectedNull f ""
@@ -111,7 +110,6 @@ insertCredentialEntry
 queryCredentialEntryByCredential :: Connection -> WA.CredentialId -> IO (Maybe WA.CredentialEntry)
 queryCredentialEntryByCredential conn (WA.CredentialId credentialId) = do
     let binaryCredId = SQL.Binary credentialId
-    catch @SomeException (formatQuery conn sqlStmt (Only binaryCredId) >>= print) $ \exc -> putStrLn (displayException exc)
     entries <- query
         conn
         sqlStmt

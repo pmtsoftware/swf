@@ -50,8 +50,13 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     cssChecksum <- buildCssChecksum
     pendingCeremonies <- newPendingCeremonies defaultPendingCeremoniesConfig
     registry <- newTVarIO emptyRegistry
-    let rpIdHash = RpIdHash $ Hash.hash $ encodeUtf8 @Text @ByteString "localhost"
-    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry rpIdHash
+    -- The RP ID is the effective domain (e.g. "localhost"); its SHA-256 hash is
+    -- what the authenticator signs over. The origin is the full scheme+host+port
+    -- the browser reports. Both come from config so non-localhost deployments
+    -- (and https) work without code changes.
+    let rpIdHash = RpIdHash $ Hash.hash $ encodeUtf8 @Text @ByteString appHost
+        origin = fromString $ toString appOrigin
+    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry rpIdHash origin
         warpSettings = Warp.setPort appPort
             . Warp.setBeforeMainLoop beforeMainLoop
             . Warp.setOnException exceptionHandler
