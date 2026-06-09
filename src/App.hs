@@ -29,16 +29,16 @@ import Network.Wai (Request)
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
 
-start :: IO ()
-start = loadAppConfig >>= startWithConfig nop
+start :: Bool -> IO ()
+start dev = loadAppConfig >>= startWithConfig dev nop
 
 exceptionHandler :: Maybe Request -> SomeException -> IO ()
 exceptionHandler _ err = do
     putStrLn "EXCEPTION!"
     print err
 
-startWithConfig :: IO () -> AppConfig -> IO ()
-startWithConfig beforeMainLoop cfg@AppConfig{..} = do
+startWithConfig :: Bool -> IO () -> AppConfig -> IO ()
+startWithConfig dev beforeMainLoop cfg@AppConfig{..} = do
     let poolCfg = defaultPoolConfig
                     (connectPostgreSQL "")
                     close
@@ -56,7 +56,7 @@ startWithConfig beforeMainLoop cfg@AppConfig{..} = do
     -- (and https) work without code changes.
     let rpIdHash = RpIdHash $ Hash.hash $ encodeUtf8 @Text @ByteString appHost
         origin = fromString $ toString appOrigin
-    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry rpIdHash origin
+    let env = AppEnv cfg pool key cssChecksum pendingCeremonies registry rpIdHash origin dev
         warpSettings = Warp.setPort appPort
             . Warp.setBeforeMainLoop beforeMainLoop
             . Warp.setOnException exceptionHandler
@@ -72,9 +72,9 @@ application = do
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
             ensureSession
-            checksum <- lift $ asks cssChecksum
+            AppEnv{..} <- lift ask
             logInfo "GET home page"
-            Scotty.html $ renderHomepage checksum
+            Scotty.html $ renderHomepage dev cssChecksum
         users
         auth
         Webauthn.service

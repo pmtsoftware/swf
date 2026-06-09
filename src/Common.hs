@@ -49,6 +49,7 @@ data AppEnv = AppEnv
     , registry :: TVar MetadataServiceRegistry
     , rpIdHash :: RpIdHash
     , origin :: Origin
+    , dev :: Bool
     }
 
 newtype App a = App { runApp :: ReaderT AppEnv (LoggingT IO) a }
