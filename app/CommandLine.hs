@@ -5,7 +5,9 @@ module CommandLine
 
 import Relude
 
+import Data.Version (showVersion)
 import Options.Applicative
+import Paths_swf (version)
 
 -- TODO: we want to support following commands:
 -- app     : run web app
@@ -38,8 +40,11 @@ cmd = subparser
     <> command "adduser" (info addUser (progDesc "Add user"))
     )
 
+versioner :: Parser (a -> a)
+versioner = simpleVersioner ("swf " <> showVersion version)
+
 opts :: ParserInfo Command
-opts = info (cmd <**> helper) idm
+opts = info (cmd <**> versioner <**> helper) idm
 
 parseCommand :: IO Command
 parseCommand = execParser opts
