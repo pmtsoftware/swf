@@ -25,6 +25,7 @@ import Webauthn.MetadataFetch (emptyRegistry)
 import Crypto.WebAuthn (RpIdHash(..))
 import qualified Crypto.Hash as Hash
 import Network.Wai (Request)
+import System.TimeManager
 
 runIO :: AppEnv -> App a -> IO a
 runIO env = runStdoutLoggingT . usingReaderT env . runApp
@@ -33,9 +34,11 @@ start :: Bool -> IO ()
 start dev = loadAppConfig >>= startWithConfig dev nop
 
 exceptionHandler :: Maybe Request -> SomeException -> IO ()
-exceptionHandler _ err = do
-    putStrLn "EXCEPTION!"
-    print err
+exceptionHandler _ err
+    | Just TimeoutThread <- fromException err = return ()
+    | otherwise = do
+        putStrLn "EXCEPTION!"
+        print err
 
 startWithConfig :: Bool -> IO () -> AppConfig -> IO ()
 startWithConfig dev beforeMainLoop cfg@AppConfig{..} = do
@@ -71,7 +74,7 @@ application :: ScottyT App ()
 application = do
         Scotty.matchAny staticRoute sApp
         Scotty.get "/" $ do
-            ensureSession
+            -- ensureSession
             AppEnv{..} <- lift ask
             logInfo "GET home page"
             Scotty.html $ renderHomepage dev cssChecksum

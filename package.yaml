@@ -87,6 +87,7 @@ library:
   - text
   - base64-bytestring
   - aeson-pretty
+  - time-manager
 
 executables:
   swf-exe:
