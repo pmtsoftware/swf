@@ -16,7 +16,7 @@ import Paths_swf (version)
 -- passwd  : change user passwords
 
 data Command
-    = App
+    = App Bool
     | AddUser Text Text
 
 addUser :: Parser Command
@@ -34,9 +34,16 @@ addUser = AddUser
         <> help "Password"
         )
 
+app :: Parser Command
+app = App
+    <$> switch
+        ( long "dev"
+        <> help "Development mode"
+        )
+
 cmd :: Parser Command
 cmd = subparser
-    (  command "app" (info (pure App) (progDesc "Run web app"))
+    (  command "app" (info app (progDesc "Run web app"))
     <> command "adduser" (info addUser (progDesc "Add user"))
     )
 

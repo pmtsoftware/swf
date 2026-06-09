@@ -13,7 +13,7 @@ main :: IO ()
 main = do
     opt <- parseCommand
     case opt of
-        App -> start
+        App _ -> start
         AddUser un pwd -> do
             _ <- loadAppConfig
             conn <- connectPostgreSQL ""
