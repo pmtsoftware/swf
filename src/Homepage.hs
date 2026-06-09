@@ -8,7 +8,7 @@ import Text.Blaze.Html.Renderer.Text
 
 renderHomepage :: Bool -> ByteString -> LText
 renderHomepage dev cssSha = renderHtml . layout dev cssSha $ do
-    h1 "Hello world app"
+    h1 "Simple Web Framework"
     p "Welcome in our new web app when live reloading almost works!"
     button "Example button"
     a ! href "/webauthn/register" $ button "Register"
@@ -17,9 +17,10 @@ layout :: Bool -> ByteString -> Html -> Html
 layout devMode cssChecksum innerHtml = docTypeHtml ! dataAttribute "bs-theme" "dark" $ do
     head $ do
         meta ! name "viewport" ! content "width=device-width, initial-scale=1.0"
-        title "Hello world!!!"
+        title "Simple Web Framework"
         link ! rel "icon" ! href "/static/favicon.ico" ! type_ "image/x-icon"
-        link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
+        link ! href "/static/matcha.css" ! rel "stylesheet"
+        -- link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
         -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
         link ! href ("/static/swf.css?checksum=" <> checksumAV) ! rel "stylesheet"
         when devMode $ script ! type_ "module" ! src "/static/dev.js" $ mempty
