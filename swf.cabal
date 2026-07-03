@@ -86,8 +86,6 @@ library
     , http-types
     , monad-logger
     , password
-    , postgresql-migration
-    , postgresql-simple
     , profunctors
     , relude
     , resource-pool
@@ -160,7 +158,6 @@ executable swf-exe
     , hasql
     , optparse-applicative
     , password
-    , postgresql-simple
     , relude
     , swf
     , validation

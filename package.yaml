@@ -53,8 +53,6 @@ library:
   - scotty
   - http-types
   - blaze-html
-  - postgresql-simple
-  - postgresql-migration
   - hasql
   - hasql-transaction
   - hasql-th
@@ -107,7 +105,6 @@ executables:
     dependencies:
     - swf
     - optparse-applicative
-    - postgresql-simple
     - hasql
     - validation
     - password
