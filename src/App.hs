@@ -42,13 +42,8 @@ exceptionHandler _ err
 
 startWithConfig :: Bool -> IO () -> AppConfig -> IO ()
 startWithConfig dev beforeMainLoop cfg@AppConfig{..} = do
-    let poolCfg = defaultPoolConfig
-                    (connectPostgreSQL "")
-                    close
-                    60
-                    10
-    pool <- newPool $ setNumStripes (Just 1) poolCfg
-    _ <- withResource pool migrateDb
+    pool <- acquire 10 10 1800 600 ""
+    _ <- migrateDb pool
     key <- getDefaultKey
     cssChecksum <- buildCssChecksum
     pendingCeremonies <- newPendingCeremonies defaultPendingCeremoniesConfig

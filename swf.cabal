@@ -31,6 +31,7 @@ library
       Db
       Homepage
       Lib
+      PostgreSQL.ErrorCodes
       Session
       Types
       Users
@@ -74,6 +75,11 @@ library
     , email-validate
     , envy
     , fmt
+    , hasql
+    , hasql-migration
+    , hasql-pool
+    , hasql-th
+    , hasql-transaction
     , hourglass
     , http-client
     , http-client-tls
@@ -82,6 +88,7 @@ library
     , password
     , postgresql-migration
     , postgresql-simple
+    , profunctors
     , relude
     , resource-pool
     , scotty
@@ -93,6 +100,7 @@ library
     , time-manager
     , unliftio
     , validation
+    , vector
     , wai
     , wai-app-static
     , warp
@@ -149,10 +157,13 @@ executable swf-exe
       base >=4.7 && <5
     , dotenv
     , envy
+    , hasql
     , optparse-applicative
+    , password
     , postgresql-simple
     , relude
     , swf
+    , validation
   default-language: Haskell2010
 
 test-suite swf-test

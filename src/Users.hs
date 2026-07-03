@@ -2,6 +2,8 @@ module Users
     ( users
     , createUser
     , Form(..)
+    , validateForm
+    , reportFormValidationError
     ) where
 
 import Common hiding (pass)
@@ -10,23 +12,29 @@ import Homepage (layoutM)
 
 import qualified Text.Email.Validate as EmailV
 import Text.Email.Validate (EmailAddress)
+
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT, ActionT)
 
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
+
 import qualified Data.List.NonEmpty as NE
-import Data.Password.Argon2 (Password, mkPassword, hashPassword)
+import Data.Password.Argon2 (Password, mkPassword, hashPassword, PasswordHash (unPasswordHash), Argon2)
 import Data.Password.Validate
 import qualified Data.Text as T
-import Database.PostgreSQL.Simple.Time (ZonedTimestamp)
-import Database.PostgreSQL.Simple.FromRow (fromRow, field)
 import Data.Validation
 import Relude.Extra.Newtype (un)
-import Network.HTTP.Types (badRequest400)
-import Database.PostgreSQL.Simple.Errors (catchViolation, ConstraintViolation (UniqueViolation))
-import Control.Exception (throwIO)
+
+import Hasql.TH
+import Hasql.Statement
+import Hasql.Session (Session, statement)
+import qualified Hasql.Encoders as E
+import qualified Hasql.Decoders as D
+
+import Data.Profunctor (Profunctor(dimap))
+import Data.Time (UTCTime)
 
 newtype PlainPassword = PlainPassword Text
     deriving (Show, Eq)
@@ -37,12 +45,10 @@ newtype PlainPassword2 = PlainPassword2 Text
 data User = User
     { userId :: UserId
     , email :: !Email
-    , lockedAt :: Maybe ZonedTimestamp
-    , failedLoginAttempts :: !Int
+    , lockedAt :: Maybe UTCTime
+    , failedLoginAttempts :: !Int32
     }
     deriving (Show, Generic)
-instance FromRow User where
-    fromRow = User <$> field <*> field <*> field <*> field
 
 data Form = Form
     { formUserId :: Maybe UserId
@@ -107,28 +113,38 @@ users = do
 listOfUsers :: ActionT App ()
 listOfUsers = do
     pool <- lift $ asks connPool
-    allUsers <- liftIO $ withResource pool $ \conn -> do
-        query_ @User conn stmt
-    layout <- layoutM
-    Scotty.html . renderHtml $ layout $ do
-        h1 "Users"
-        a ! href "/add-user" $ "Add new user"
-        table $ do
-            caption "Total users: 4"
-            thead $ tr $ do
-                th ! scope "col" $ "#"
-                th ! scope "col" $ "Email"
-            tbody $ do
-                forM_ allUsers toRow
-
+    result <- liftIO $ use pool $ statement () selectAllUsers
+    case result of
+        Left err -> undefined
+        Right allUsers -> do
+            layout <- layoutM
+            Scotty.html . renderHtml $ layout $ do
+                h1 "Users"
+                a ! href "/add-user" $ "Add new user"
+                table $ do
+                    caption "Total users: 4"
+                    thead $ tr $ do
+                        th ! scope "col" $ "#"
+                        th ! scope "col" $ "Email"
+                    tbody $ do
+                        forM_ allUsers toRow
     where
         toRow :: User -> Html
         toRow User{..} = tr $ do
             th ! scope "col" $ text . T.pack . show $ userId
             td $ text (un email)
-        stmt = [sql|
-            SELECT id, email, locked_at, failed_login_attempts FROM users;
-        |]
+
+selectAllUsers :: Statement () [User]
+selectAllUsers =
+    Statement sql' E.noParams decoder True
+    where
+        sql' = "SELECT id, email, locked_at, failed_login_attempts FROM users"
+        decoder = D.rowList decodeUser
+        userIdCol = fmap UserId . D.column . D.nonNullable $ D.int8
+        emailCol = fmap Email . D.column . D.nonNullable $ D.text
+        locketAtCol = D.column . D.nullable $ D.timestamptz
+        failedLoginAttemptsCol = D.column . D.nonNullable $ D.int4
+        decodeUser = User <$> userIdCol <*> emailCol <*> locketAtCol <*> failedLoginAttemptsCol
 
 userForm :: Form -> Maybe (NonEmpty FormValidationError) -> ActionT App ()
 userForm Form{..} errors = do
@@ -152,12 +168,12 @@ userForm Form{..} errors = do
             button ! type_ "submit" $ "Save"
 
 renderEmailErrors :: NonEmpty FormValidationError -> Html
-renderEmailErrors errs = ul $ forM_ [x | x <- toList errs, x == InvalidEmail, x == EmailNotUnique] render
+renderEmailErrors errs = ul $ forM_ [x | x <- toList errs, x == InvalidEmail || x == EmailNotUnique] render
     where
         render err = li $ text $ reportFormValidationError err
 
 renderPasswordErrors :: NonEmpty FormValidationError -> Html
-renderPasswordErrors errs = ul $ forM_ [x | x <- toList errs, isInvalidPass x, x == Paswword2Mismatch] render
+renderPasswordErrors errs = ul $ forM_ [x | x <- toList errs, isInvalidPass x || x == Paswword2Mismatch] render
     where
         render err = li $ text $ reportFormValidationError err
         isInvalidPass (InvalidPass _) =  True
@@ -179,24 +195,38 @@ reportPassValiadtionError (NotEnoughReqChars Digit minAmount _) = "At least " +|
 reportPassValiadtionError (InvalidCharacters chars) = "Password contains chracters than cannot be used: " <> chars
 
 -- TODO: handle unexpected SQL errors
-createUser :: Connection -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
-createUser conn formData = case validateForm formData of
-    Success data' -> catchViolation catcher $ Right <$> run data'
-    Failure errs -> pure $ Left errs
+-- createUser :: Connection -> Form -> IO (Either (NonEmpty FormValidationError) UserId)
+-- createUser conn formData = case validateForm formData of
+--     Success data' -> catchViolation catcher $ Right <$> run data'
+--     Failure errs -> pure $ Left errs
+--     where
+--         catcher _ (UniqueViolation "email_unique") = pure . Left $ NE.singleton EmailNotUnique
+--         catcher e _ = throwIO e
+--
+--         run :: (Email, Password) -> IO UserId
+--         run (mail, pass) = do
+--             pwHash <- hashPassword pass
+--             liftIO $ do
+--                 [Only uid] <- query conn stmt (mail, pwHash)
+--                 return (uid :: UserId)
+--
+--         stmt = [sql|
+--             INSERT INTO users (email, password) VALUES (?, ?) RETURNING id;
+--         |]
+
+-- Storage only: expects an already-hashed password so the pooled connection
+-- isn't held during the (deliberately slow) Argon2 hashing.
+createUser :: (Email, PasswordHash Argon2) -> Session (Maybe UserId)
+createUser params = statement params insertUser
     where
-        catcher _ (UniqueViolation "email_unique") = pure . Left $ NE.singleton EmailNotUnique
-        catcher e _ = throwIO e
-
-        run :: (Email, Password) -> IO UserId
-        run (mail, pass) = do
-            pwHash <- hashPassword pass
-            liftIO $ do
-                [Only uid] <- query conn stmt (mail, pwHash)
-                return (uid :: UserId)
-
-        stmt = [sql|
-            INSERT INTO users (email, password) VALUES (?, ?) RETURNING id;
+        insertUser :: Statement (Email, PasswordHash Argon2) (Maybe UserId)
+        insertUser = dimap toParams (fmap UserId) [maybeStatement|
+            INSERT INTO users (email, password) VALUES ($1 :: text, $2 :: text)
+            ON CONFLICT (email) DO NOTHING
+            RETURNING id :: int8
         |]
+        toParams :: (Email, PasswordHash Argon2) -> (Text, Text)
+        toParams (e, passHash) = (unEmail e, unPasswordHash passHash)
 
 addUserHandler :: ActionT App ()
 addUserHandler = do
@@ -204,15 +234,19 @@ addUserHandler = do
         <$> Scotty.formParam "email"
         <*> Scotty.formParam "password"
         <*> Scotty.formParam "password2"
-    AppEnv{..} <- lift ask
-    result <- liftIO $ withResource connPool $ \conn -> createUser conn formData
-    either (handleError formData) handleSucces result
+    case validateForm formData of
+        Success (email, password) -> do
+            pwHash <- hashPassword password
+            result <- runDbSession $ createUser (email, pwHash)
+            maybe (handleUniquenessViolation formData) handleSucces result
+        Failure errs -> userForm formData $ Just errs
+        
     where
         handleSucces :: UserId -> ActionT App ()
         handleSucces userId = Scotty.redirect $ "/user/" +| unUserId userId |+ ""
 
-        handleError :: Form -> NonEmpty FormValidationError -> ActionT App ()
-        handleError f errs = do
-            Scotty.status badRequest400
-            userForm f $ Just errs
+        handleUniquenessViolation :: Form -> ActionT App ()
+        handleUniquenessViolation f = do
+            -- Scotty.status badRequest400
+            userForm f $ Just (EmailNotUnique :| [])
 
