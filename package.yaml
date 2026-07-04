@@ -53,8 +53,12 @@ library:
   - scotty
   - http-types
   - blaze-html
-  - postgresql-simple
-  - postgresql-migration
+  - hasql
+  - hasql-transaction
+  - hasql-th
+  - hasql-migration
+  - hasql-pool
+  - vector
   - resource-pool
   - monad-logger
   - wai-app-static
@@ -88,6 +92,7 @@ library:
   - base64-bytestring
   - aeson-pretty
   - time-manager
+  - profunctors
 
 executables:
   swf-exe:
@@ -100,7 +105,9 @@ executables:
     dependencies:
     - swf
     - optparse-applicative
-    - postgresql-simple
+    - hasql
+    - validation
+    - password
   swf-dev:
     main:                Main.hs
     source-dirs:         dev

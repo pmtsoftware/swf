@@ -4,9 +4,13 @@ import Relude
 
 import App
 import CommandLine
-import Users (createUser, Form(..))
+import Users (createUser, Form(..), validateForm, reportFormValidationError)
 
-import Database.PostgreSQL.Simple hiding (fold)
+import Data.Validation
+
+import qualified Hasql.Session as Hasql
+import qualified Hasql.Connection as Hasql
+import Data.Password.Argon2 (hashPassword)
 import Config (loadAppConfig)
 
 main :: IO ()
@@ -16,8 +20,16 @@ main = do
         WebApp dev -> start dev
         AddUser un pwd -> do
             _ <- loadAppConfig
-            conn <- connectPostgreSQL ""
-            result <- createUser conn $ Form Nothing (encodeUtf8 un) pwd pwd
-            case result of
-                Left _ -> putStrLn "Error"
-                Right _ -> putStrLn " User added"
+            conn <- Hasql.acquire ""
+            -- TODO: password as command line arg is not goo idea because it stays in shell history
+            -- one option is to use 'pwgen' tool to generate password randomly
+            whenRight_ conn $ \conn' -> do
+                let form = toEither . validateForm $ Form Nothing (encodeUtf8 un) pwd pwd
+                case form of
+                    Left errs -> putTextLn "Errors:" >> forM_ (reportFormValidationError <$> errs) putTextLn
+                    Right (e, p) -> do
+                        pwHash <- hashPassword p
+                        result <- Hasql.run (createUser (e, pwHash)) conn'
+                        case result of
+                            Left _ -> putStrLn "Error"
+                            Right _ -> putStrLn " User added"

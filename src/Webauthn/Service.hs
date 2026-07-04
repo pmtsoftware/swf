@@ -91,10 +91,9 @@ jsonText = decodeUtf8 . toStrict . AP.encodePretty' config
 beginRegistration :: Handler ()
 beginRegistration = do
     req@RegisterBeginReq {accountName, accountDisplayName} <- Scotty.jsonData @RegisterBeginReq
-    Scotty.liftAndCatchIO $ TIO.putStrLn $ "Register begin <= " <> jsonText req
+    -- Scotty.liftAndCatchIO $ TIO.putStrLn $ "Register begin <= " <> jsonText req
     AppEnv{..} <- lift ask
-    exists <- Scotty.liftAndCatchIO $
-        withResource connPool $ \conn -> userExists conn (WA.UserAccountName accountName)
+    exists <- runDbSession $ userExists (WA.UserAccountName accountName)
     when exists $ Scotty.raiseStatus HTTP.status409 "Account name already taken"
     userId <- Scotty.liftAndCatchIO WA.generateUserHandle
     let user = WA.CredentialUserEntity
@@ -178,27 +177,23 @@ completeRegistration = do
     Scotty.liftAndCatchIO $ TIO.putStrLn $ "Register complete result: " <> jsonText result
     -- if the credential was succesfully attested, we will see if the
     -- credential doesn't exist yet, and if it doesn't, insert it.
-    -- Scotty.liftAndCatchIO $
-    liftIO $
-        withResource connPool $ \conn -> withTransaction conn $ do
+    dbResult <- runDbSession $ do
             -- If a credential with this id existed already, it must belong to the
             -- current user, otherwise it's an error. The spec allows removing the
             -- credential from the old user instead, but we don't do that.
             -- The lookup and the inserts share one transaction so the user and its
             -- credential are committed together (or not at all).
 
-            mexistingEntry <- queryCredentialEntryByCredential conn (WA.ceCredentialId $ WA.rrEntry result)
+            mexistingEntry <- queryCredentialEntryByCredential (WA.ceCredentialId $ WA.rrEntry result)
             case mexistingEntry of
                 Nothing -> do
-                    putStrLn "Creating user"
-                    _ <- insertUser conn $ WA.corUser options
-                    putStrLn "Creating cred"
-                    _ <- insertCredentialEntry conn $ WA.rrEntry result
-                    pure ()
-                Just existingEntry | userHandle == WA.ceUserHandle existingEntry -> pure ()
+                    _ <- insertUser $ WA.corUser options
+                    _ <- insertCredentialEntry $ WA.rrEntry result
+                    pure $ Right True -- user and credentials created
+                Just existingEntry | userHandle == WA.ceUserHandle existingEntry -> pure $ Right False -- nothing created - existing entry
                 Just differentEntry -> do
-                    TIO.putStrLn $ "Register complete credential already belongs to the user credential entry: " <> jsonText differentEntry
-                    fail "This credential is already registered"
+                    liftIO $ TIO.putStrLn $ "Register complete credential already belongs to the user credential entry: " <> jsonText differentEntry
+                    pure $ Left "This credential is already registered"
     -- TODO: authenticated
     let response = String "success"
     Scotty.liftAndCatchIO $ TIO.putStrLn $ "Register complete => " <> jsonText response
@@ -210,9 +205,7 @@ beginLogin = do
     Scotty.liftAndCatchIO $ TIO.putStrLn $ "Login begin <= " <> jsonText accountName
 
     AppEnv{..} <- lift ask
-    credentials <- Scotty.liftAndCatchIO $
-        withResource connPool $ \conn -> do
-            queryCredentialEntriesByUser conn accountName
+    credentials <- runDbSession $ queryCredentialEntriesByUser accountName
     when (null credentials) $ do
         Scotty.liftAndCatchIO $ TIO.putStrLn "Login begin error: User not found"
         Scotty.raiseStatus HTTP.status404 "User not found"
@@ -228,7 +221,7 @@ beginLogin = do
                 { WA.coaRpId = Nothing,
                     WA.coaTimeout = Nothing,
                     WA.coaChallenge = challenge,
-                    WA.coaAllowCredentials = fmap mkCredentialDescriptor credentials,
+                    WA.coaAllowCredentials = fmap mkCredentialDescriptor (toList credentials),
                     WA.coaUserVerification = WA.UserVerificationRequirementPreferred,
                     WA.coaExtensions = Nothing
                 }
@@ -274,9 +267,7 @@ completeLogin = do
             Right result -> pure result
 
     -- Check database for user, abort if user is unknown.
-    mentry <- Scotty.liftAndCatchIO $
-        withResource connPool $ \conn ->
-            queryCredentialEntryByCredential conn (WA.cIdentifier cred)
+    mentry <- runDbSession $ queryCredentialEntryByCredential (WA.cIdentifier cred)
     entry <- case mentry of
         Nothing -> do
             Scotty.liftAndCatchIO $ TIO.putStrLn "Login complete credential entry doesn't exist"
@@ -304,13 +295,9 @@ completeLogin = do
         WA.SignatureCounterZero ->
             Scotty.liftAndCatchIO $
             TIO.putStrLn "SignatureCounter is Zero"
-        (WA.SignatureCounterUpdated counter) ->
-            Scotty.liftAndCatchIO $ do
-            TIO.putStrLn $ "Updating SignatureCounter to: " <> show counter
-            withResource connPool $
-                \conn -> do
-                    _ <- updateSignatureCounter conn (WA.cIdentifier cred) counter
-                    return ()
+        (WA.SignatureCounterUpdated counter) -> runDbSession $ do
+            _ <- updateSignatureCounter (WA.cIdentifier cred) counter
+            return ()
         WA.SignatureCounterPotentiallyCloned -> Scotty.raiseStatus HTTP.status401 "Signature Counter Cloned"
 
     -- Set the login cookie and send the result to the server
