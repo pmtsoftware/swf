@@ -10,6 +10,8 @@ import Data.Validation
 
 import qualified Hasql.Session as Hasql
 import qualified Hasql.Connection as Hasql
+import qualified Hasql.Connection.Setting as ConnSetting
+import qualified Hasql.Connection.Setting.Connection as ConnString
 import Data.Password.Argon2 (hashPassword)
 import Config (loadAppConfig)
 
@@ -20,7 +22,9 @@ main = do
         WebApp dev -> start dev
         AddUser un pwd -> do
             _ <- loadAppConfig
-            conn <- Hasql.acquire ""
+            -- hasql 1.9: acquire takes connection Settings; empty string means
+            -- libpq falls back to the PG* env vars (as before).
+            conn <- Hasql.acquire [ConnSetting.connection (ConnString.string "")]
             -- TODO: password as command line arg is not goo idea because it stays in shell history
             -- one option is to use 'pwgen' tool to generate password randomly
             whenRight_ conn $ \conn' -> do

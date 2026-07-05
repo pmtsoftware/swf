@@ -1,6 +1,6 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.38.1.
+-- This file has been generated from package.yaml by hpack version 0.39.6.
 --
 -- see: https://github.com/sol/hpack
 
@@ -71,7 +71,6 @@ library
     , cookie
     , cryptohash-sha1
     , crypton
-    , dotenv
     , email-validate
     , envy
     , fmt
@@ -84,6 +83,7 @@ library
     , http-client
     , http-client-tls
     , http-types
+    , load-env
     , monad-logger
     , password
     , profunctors
@@ -123,11 +123,11 @@ executable swf-dev
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , dotenv
     , envy
     , filepath
     , fmt
     , fsnotify
+    , load-env
     , process
     , relude
     , time
@@ -153,9 +153,9 @@ executable swf-exe
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , dotenv
     , envy
     , hasql
+    , load-env
     , optparse-applicative
     , password
     , relude
@@ -182,10 +182,10 @@ test-suite swf-test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , dotenv
     , envy
     , hspec
     , lens
+    , load-env
     , relude
     , swf
     , tasty

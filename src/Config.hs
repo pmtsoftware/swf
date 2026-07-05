@@ -9,7 +9,7 @@ module Config
 import Relude
 
 import System.Envy
-import  Configuration.Dotenv
+import LoadEnv (loadEnv, loadEnvFrom)
 
 data AppConfig = AppConfig
     { appHost    :: Text   -- APP_HOST
@@ -36,12 +36,11 @@ instance DefConfig AppConfig where
 instance FromEnv AppConfig
 
 loadAppConfig :: IO AppConfig
-loadAppConfig = loadConfig defaultConfig
+loadAppConfig = do
+    loadEnv -- loading env variables from .env file
+    fromRight defConfig <$> decodeEnv @AppConfig
 
 loadTestConfig :: IO AppConfig
-loadTestConfig = loadConfig $ defaultConfig { configPath = [ ".env.test" ] }
-
-loadConfig :: Config -> IO AppConfig
-loadConfig cfg = do
-    loadFile cfg -- loading env variables from .env* file
+loadTestConfig = do
+    loadEnvFrom ".env.test" -- loading env variables from .env.test file
     fromRight defConfig <$> decodeEnv @AppConfig

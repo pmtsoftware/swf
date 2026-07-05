@@ -23,7 +23,7 @@ import Relude hiding (div, head, id, span, map)
 import Config
 
 import Hasql.Pool
-import Hasql.Session (Session, QueryError(..), CommandError(..), ResultError(..), RowError(..))
+import Hasql.Session (Session, SessionError(..), CommandError(..), ResultError(..), RowError(..))
 
 import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, MonadLogger, logInfoN, logDebugN, logWarnN, logErrorN)
@@ -81,13 +81,16 @@ reportUsageError = \case
         "DB connection error"+|detailSuffix details|+""
     AcquisitionTimeoutUsageError ->
         "DB error: timed out acquiring a connection from the pool"
-    SessionUsageError qErr -> reportQueryError qErr
+    SessionUsageError sErr -> reportSessionError sErr
 
-reportQueryError :: QueryError -> Text
-reportQueryError (QueryError sql params cmdErr) =
-    reportCommandError cmdErr
-        |+"\n  statement: "+|decodeUtf8 @Text sql
-        |+"\n  parameters: "+|length params|+" value(s)"
+reportSessionError :: SessionError -> Text
+reportSessionError = \case
+    QueryError sql params cmdErr ->
+        reportCommandError cmdErr
+            |+"\n  statement: "+|decodeUtf8 @Text sql
+            |+"\n  parameters: "+|length params|+" value(s)"
+    PipelineError cmdErr ->
+        "DB pipeline error: "+|reportCommandError cmdErr|+""
 
 reportCommandError :: CommandError -> Text
 reportCommandError = \case

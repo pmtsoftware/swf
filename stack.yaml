@@ -17,7 +17,7 @@
 #
 # snapshot: ./custom-snapshot.yaml
 # snapshot: https://example.com/snapshots/2024-01-01.yaml
-snapshot: lts-22.44
+snapshot: lts-24.49
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -41,7 +41,12 @@ packages:
 #
 extra-deps:
   - webauthn-0.11.0.0
-  - hashtables-1.4.2 # TODO: remove after upgrading snapshot tot LTS 24.45
+
+# webauthn-0.11.0.0 has stale upper bounds (base, containers, crypton, hashable, lens);
+# its source is compatible with LTS 24.49 (proven by relaxed bounds on webauthn master).
+allow-newer: true
+allow-newer-deps:
+  - webauthn
 
 # Override default flag values for project packages and extra-deps
 # flags: {}
@@ -68,7 +73,3 @@ extra-deps:
 # compiler-check: newer-minor
 
 notify-if-nix-on-path: false
-
-# allow-newer: true
-# allow-newer-deps:
-#   - validation-selective

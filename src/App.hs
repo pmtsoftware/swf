@@ -11,6 +11,9 @@ import Db
 import qualified Webauthn.Service as Webauthn
 
 import qualified Web.Scotty.Trans as Scotty
+import qualified Hasql.Pool.Config as PoolConfig
+import qualified Hasql.Connection.Setting as ConnSetting
+import qualified Hasql.Connection.Setting.Connection as ConnString
 
 import Web.Scotty.Trans (ScottyT)
 import Network.Wai.Application.Static (staticApp, defaultWebAppSettings)
@@ -42,7 +45,13 @@ exceptionHandler _ err
 
 startWithConfig :: Bool -> IO () -> AppConfig -> IO ()
 startWithConfig dev beforeMainLoop cfg@AppConfig{..} = do
-    pool <- acquire 10 10 1800 600 ""
+    -- hasql-pool 1.3 replaced positional acquire args with a Config. Values match
+    -- the previous call: size 10, acquisition 10s, aging 1800s, idleness 600s, and
+    -- an empty connection string so libpq falls back to the PG* env vars.
+    pool <- acquire $ PoolConfig.settings
+        [ PoolConfig.staticConnectionSettings
+            [ ConnSetting.connection (ConnString.string "") ]
+        ]
     _ <- migrateDb pool
     key <- getDefaultKey
     cssChecksum <- buildCssChecksum
