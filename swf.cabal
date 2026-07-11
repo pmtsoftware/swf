@@ -26,13 +26,15 @@ source-repository head
 library
   exposed-modules:
       App
+      Auth.Service
+      Auth.Session
+      Auth.Types
       Common
       Config
       Db
       Homepage
       Lib
       PostgreSQL.ErrorCodes
-      Session
       Types
       Users
       Webauthn.Database

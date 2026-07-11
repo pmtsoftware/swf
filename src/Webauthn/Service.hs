@@ -20,7 +20,6 @@ import Webauthn.Database (userExists, queryCredentialEntryByCredential, insertUs
 import Webauthn.PendingCeremonies (insertPendingRegistration, getPendingRegistration, insertPendingAuthentication, getPendingAuthentication)
 import Data.Validation (Validation (Failure, Success))
 import System.Hourglass (dateCurrent)
-import Homepage (layoutM)
 
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label, id)

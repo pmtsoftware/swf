@@ -1,13 +1,14 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Session
-( auth
-, ensureSession
+module Auth.Service
+( service
 ) where
 
 import Common
 import Types
-import Homepage (layoutM)
+
+import Auth.Types
+import Auth.Session
 
 import qualified Web.Scotty.Trans as Scotty
 import Web.Scotty.Trans (ScottyT, ActionT)
@@ -16,40 +17,16 @@ import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (title, form, label)
 import Text.Blaze.Html.Renderer.Text
 import Data.Password.Argon2 (Password, mkPassword, PasswordHash (..), Argon2, checkPassword, PasswordCheck (..))
-import qualified Data.Serialize as Bin
 import Data.Serialize.Text ()
 import Control.Monad.Logger (logErrorN)
-import qualified Web.ClientSession as Sess
-import qualified Web.Scotty.Cookie as Cookie
-import Data.Time.Clock (UTCTime(..), DiffTime, diffTimeToPicoseconds, picosecondsToDiffTime, getCurrentTime)
-import Data.Time.Calendar (Day (..), toModifiedJulianDay)
+import Data.Time.Clock (getCurrentTime, addUTCTime)
 
 import Hasql.TH
 import Hasql.Statement
-import Hasql.Decoders hiding (text)
-import Hasql.Encoders hiding (name)
 import Hasql.Session --(statement)
 import Hasql.Transaction (Transaction)
 import qualified Hasql.Transaction as Tr
 import Data.Profunctor
-
-instance Bin.Serialize Day where
-  put = Bin.put . toModifiedJulianDay
-  get = ModifiedJulianDay <$> Bin.get
-instance Bin.Serialize DiffTime where
-  put = Bin.put . diffTimeToPicoseconds
-  get = picosecondsToDiffTime <$> Bin.get
-instance Bin.Serialize UTCTime where
-  put UTCTime {..} = Bin.put utctDay >> Bin.put utctDayTime
-  get = UTCTime <$> Bin.get <*> Bin.get
-
-data SessionData = MkSessionData
-    { sessionEmail :: !Text
-    , sessionUserId :: !UserId
-    , sessionTimestamp :: !UTCTime -- TODO: change name to expiration and validate
-    }
-    deriving (Show, Eq, Generic)
-instance Bin.Serialize SessionData
 
 data Error
     = EmailNotFound
@@ -67,8 +44,8 @@ def = Form
     , formPassword = ""
     }
 
-auth :: ScottyT App ()
-auth = do
+service :: ScottyT App ()
+service = do
     Scotty.get "/login" $ loginForm def Nothing
     Scotty.post "/login" login
     Scotty.get "/login-successed" $ do
@@ -130,11 +107,13 @@ login = do
                 PasswordCheckSuccess -> do
                     k <- lift $ asks sessionKey
                     ct <- liftIO getCurrentTime
-                    let session = MkSessionData userEmail uid ct
-                        sessionBS = Bin.encode session
-                    encrypted <- liftIO $ Sess.encryptIO k  sessionBS
-                    Cookie.setSimpleCookie "swf-session" $ decodeUtf8 encrypted
-                    Scotty.redirect "/login-successed"
+                    let session = MkSessionData
+                                    { sessionEmail = userEmail
+                                    , sessionUserId = uid
+                                    , sessionExpiry = addUTCTime sessionLifetime ct
+                                    }
+                    writeSession k session
+                    Scotty.redirect "/"
                 PasswordCheckFail -> do
                     lift . logErrorN $ "Invalid password"
                     -- [Only fla'] <- queryDb @(Only Text) @(Only Int) updateFLA $ Only userEmail
@@ -164,15 +143,4 @@ updateLoginAttemps (UserId uid) = do
         Tr.statement uid [resultlessStatement|
             UPDATE users SET locked_at = transaction_timestamp() WHERE id = $1 :: int8
         |]
-
-ensureSession :: ActionT App ()
-ensureSession = do
-    k <- lift $ asks sessionKey
-    encrypted <- Cookie.getCookie "swf-session"
-    let decrypted = encrypted >>= Sess.decrypt k . encodeUtf8
-        maybeSessionData = decrypted >>= decodeSession
-    whenNothing_ maybeSessionData $ Scotty.redirect "/login"
-    where
-        decodeSession :: ByteString -> Maybe SessionData
-        decodeSession = rightToMaybe . Bin.decode @SessionData
 

@@ -8,7 +8,6 @@ module Users
 
 import Common hiding (pass)
 import Types
-import Homepage (layoutM)
 
 import qualified Text.Email.Validate as EmailV
 import Text.Email.Validate (EmailAddress)

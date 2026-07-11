@@ -16,6 +16,8 @@ module Common
     , logError
     , runDbSession
     , reportUsageError
+    , layoutM
+    , withLayout
     ) where
 
 import Relude hiding (div, head, id, span, map)
@@ -29,9 +31,15 @@ import UnliftIO (MonadUnliftIO)
 import Control.Monad.Logger (LoggingT, MonadLogger, logInfoN, logDebugN, logWarnN, logErrorN)
 import Web.ClientSession (Key)
 import Web.Scotty.Trans (ActionT, raise)
+import qualified Web.Scotty.Trans as Scotty
 import Fmt ((+|), (|+))
 import Webauthn.PendingCeremonies (PendingCeremonies)
 import Crypto.WebAuthn (MetadataServiceRegistry, RpIdHash, Origin)
+
+import Text.Blaze.Html5 (Html, Attribute, (!))
+import qualified Text.Blaze.Html5 as Html
+import qualified Text.Blaze.Html5.Attributes as Attr
+import Text.Blaze.Html.Renderer.Text
 
 data AppEnv = AppEnv
     { cfg :: AppConfig
@@ -140,3 +148,35 @@ sqlStateSuffix = \case
     "57014" -> " (query_canceled)"
     _       -> ""
 
+
+layout :: Bool -> ByteString -> Html -> Html
+layout devMode cssChecksum innerHtml = Html.docTypeHtml ! Html.dataAttribute "bs-theme" "dark" $ do
+    Html.head $ do
+        Html.meta ! Attr.name "viewport" ! Attr.content "width=device-width, initial-scale=1.0"
+        Html.title "Simple Web Framework"
+        Html.link ! Attr.rel "icon" ! Attr.href "/static/favicon.ico" ! Attr.type_ "image/x-icon"
+        Html.link ! Attr.href "/static/matcha.css" ! Attr.rel "stylesheet"
+        -- link ! href "https://cdn.jsdelivr.net/npm/water.css@2/out/dark.min.css" ! rel "stylesheet"
+        -- link ! href "https://cdn.jsdelivr.net/npm/sakura.css/css/sakura-dark.css" ! rel "stylesheet"
+        Html.link ! Attr.href ("/static/swf.css?checksum=" <> checksumAV) ! Attr.rel "stylesheet"
+        when devMode $ Html.script ! Attr.type_ "module" ! Attr.src "/static/dev.js" $ mempty
+        Html.script ! Attr.src "https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" $ mempty
+    Html.body ! htmxBoost $ do
+        Html.main $ do
+            -- navbar
+            innerHtml
+    where
+        checksumAV = Html.toValue . decodeUtf8 @Text $ cssChecksum
+
+layoutM :: Handler (Html -> Html)
+layoutM = do
+    AppEnv{..} <- lift ask
+    return $ layout dev cssChecksum
+
+withLayout :: Html -> Handler ()
+withLayout content = do
+    l <- layoutM
+    Scotty.html . renderHtml $ l content
+
+htmxBoost :: Attribute
+htmxBoost = Html.customAttribute "hx-boost" "true"
